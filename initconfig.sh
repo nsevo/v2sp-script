@@ -8,71 +8,29 @@ cyan='\033[0;36m'
 bold='\033[1m'
 plain='\033[0m'
 
-# Supported protocols
-PROTOCOLS="vless vmess trojan shadowsocks hysteria"
-
 print_usage() {
     echo ""
     echo -e "${bold}Usage:${plain}"
-    echo -e "  Enter: ${cyan}URL KEY PROTOCOL:ID [PROTOCOL:ID ...]${plain}"
+    echo -e "  Enter: ${cyan}URL KEY NODE_ID [NODE_ID ...]${plain}"
     echo ""
     echo -e "${bold}Examples:${plain}"
-    echo -e "  ${green}https://api.example.com/v2sp_api.php mykey123 vless:209${plain}"
-    echo -e "  ${green}https://api.example.com/v2sp_api.php mykey123 vless:209 vmess:210${plain}"
-    echo -e "  ${green}https://api.example.com/v2sp_api.php mykey123 vless:209 trojan:211 shadowsocks:212${plain}"
+    echo -e "  ${green}https://example.com/v2sp_api.php mykey123 209${plain}"
+    echo -e "  ${green}https://example.com/v2sp_api.php mykey123 209 210 211${plain}"
     echo ""
-    echo -e "${bold}Supported protocols:${plain} ${PROTOCOLS}"
+    echo -e "${bold}Note:${plain} Protocol type is auto-detected from panel database"
     echo ""
-}
-
-validate_protocol() {
-    local proto=$1
-    for p in $PROTOCOLS; do
-        [[ "$proto" == "$p" ]] && return 0
-    done
-    return 1
-}
-
-parse_node() {
-    local node=$1
-    local proto="${node%%:*}"
-    local id="${node##*:}"
-    
-    # Validate format
-    if [[ ! "$node" =~ ^[a-z]+:[0-9]+$ ]]; then
-        echo -e "${red}Invalid format: $node (expected PROTOCOL:ID)${plain}" >&2
-        return 1
-    fi
-    
-    # Validate protocol
-    if ! validate_protocol "$proto"; then
-        echo -e "${red}Unknown protocol: $proto${plain}" >&2
-        echo -e "Supported: ${PROTOCOLS}" >&2
-        return 1
-    fi
-    
-    # Validate ID
-    if [[ ! "$id" =~ ^[0-9]+$ ]] || [[ "$id" -eq 0 ]]; then
-        echo -e "${red}Invalid node ID: $id${plain}" >&2
-        return 1
-    fi
-    
-    echo "$proto:$id"
-    return 0
 }
 
 generate_node_json() {
     local url=$1
     local key=$2
-    local proto=$3
-    local id=$4
+    local id=$3
     
     cat <<EOF
         {
             "ApiHost": "$url",
             "ApiKey": "$key",
             "NodeID": $id,
-            "NodeType": "$proto",
             "Timeout": 30,
             "ListenIP": "0.0.0.0",
             "SendIP": "0.0.0.0",
@@ -106,13 +64,13 @@ generate_config_file() {
     read -ra parts <<< "$input"
     
     if [[ ${#parts[@]} -lt 3 ]]; then
-        echo -e "${red}Invalid input. Need at least: URL KEY PROTOCOL:ID${plain}"
+        echo -e "${red}Invalid input. Need at least: URL KEY NODE_ID${plain}"
         return 1
     fi
     
     local url="${parts[0]}"
     local key="${parts[1]}"
-    local nodes=("${parts[@]:2}")
+    local node_ids=("${parts[@]:2}")
     
     # Validate URL
     if [[ ! "$url" =~ ^https?:// ]]; then
@@ -120,20 +78,19 @@ generate_config_file() {
         return 1
     fi
     
-    # Validate and parse nodes
-    local valid_nodes=()
-    for node in "${nodes[@]}"; do
-        local parsed
-        parsed=$(parse_node "$node")
-        if [[ $? -eq 0 ]]; then
-            valid_nodes+=("$parsed")
+    # Validate node IDs
+    local valid_ids=()
+    for id in "${node_ids[@]}"; do
+        if [[ "$id" =~ ^[0-9]+$ ]] && [[ "$id" -gt 0 ]]; then
+            valid_ids+=("$id")
         else
+            echo -e "${red}Invalid node ID: $id (must be positive integer)${plain}"
             return 1
         fi
     done
     
-    if [[ ${#valid_nodes[@]} -eq 0 ]]; then
-        echo -e "${red}No valid nodes${plain}"
+    if [[ ${#valid_ids[@]} -eq 0 ]]; then
+        echo -e "${red}No valid node IDs${plain}"
         return 1
     fi
     
@@ -141,12 +98,7 @@ generate_config_file() {
     echo -e "${bold}Configuration:${plain}"
     echo -e "  URL: ${green}$url${plain}"
     echo -e "  Key: ${green}$key${plain}"
-    echo -e "  Nodes:"
-    for node in "${valid_nodes[@]}"; do
-        local proto="${node%%:*}"
-        local id="${node##*:}"
-        echo -e "    - ${cyan}$proto${plain} (ID: ${green}$id${plain})"
-    done
+    echo -e "  Nodes: ${cyan}${valid_ids[*]}${plain}"
     echo ""
     
     # Confirm
@@ -166,17 +118,14 @@ generate_config_file() {
     # Generate nodes JSON
     local nodes_json=""
     local first=true
-    for node in "${valid_nodes[@]}"; do
-        local proto="${node%%:*}"
-        local id="${node##*:}"
-        
+    for id in "${valid_ids[@]}"; do
         if [[ "$first" == true ]]; then
             first=false
         else
             nodes_json+=","
         fi
         nodes_json+=$'\n'
-        nodes_json+=$(generate_node_json "$url" "$key" "$proto" "$id")
+        nodes_json+=$(generate_node_json "$url" "$key" "$id")
     done
     
     # Create config directory
