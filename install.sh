@@ -120,75 +120,6 @@ install_base() {
     fi
 }
 
-create_default_sing_origin() {
-    local dnsstrategy="ipv4_only"
-    if ip -6 addr | grep -q "inet6"; then
-        dnsstrategy="prefer_ipv4"
-    fi
-    cat <<EOF > /etc/v2sp/sing_origin.json
-{
-  "dns": {
-    "servers": [
-      {
-        "tag": "cf",
-        "address": "1.1.1.1"
-      }
-    ],
-    "strategy": "$dnsstrategy"
-  },
-  "outbounds": [
-    {
-      "tag": "direct",
-      "type": "direct",
-      "domain_resolver": {
-        "server": "cf",
-        "strategy": "$dnsstrategy"
-      }
-    },
-    {
-      "type": "block",
-      "tag": "block"
-    }
-  ],
-  "route": {
-    "rules": [
-      {
-        "ip_is_private": true,
-        "outbound": "block"
-      }
-    ]
-  },
-  "experimental": {
-    "cache_file": {
-      "enabled": true
-    }
-  }
-}
-EOF
-}
-
-create_default_hy2_config() {
-    cat <<'EOF' > /etc/v2sp/hy2config.yaml
-quic:
-  initStreamReceiveWindow: 8388608
-  maxStreamReceiveWindow: 8388608
-  initConnReceiveWindow: 20971520
-  maxConnReceiveWindow: 20971520
-  maxIdleTimeout: 30s
-  maxIncomingStreams: 1024
-  disablePathMTUDiscovery: false
-ignoreClientBandwidth: false
-disableUDP: false
-udpIdleTimeout: 60s
-resolver:
-  type: system
-masquerade:
-  type: proxy
-  proxy:
-    url: https://www.bing.com
-    rewriteHost: true
-EOF
-}
 
 # 0: running, 1: not running, 2: not installed
 check_status() {
@@ -344,14 +275,6 @@ EOF
     if [[ ! -f /etc/v2sp/custom_inbound.json ]]; then
         cp custom_inbound.json /etc/v2sp/
     fi
-    if [[ ! -f /etc/v2sp/sing_origin.json ]]; then
-        step_detail "生成默认 sing_origin.json"
-        create_default_sing_origin
-    fi
-    if [[ ! -f /etc/v2sp/hy2config.yaml ]]; then
-        step_detail "生成默认 hy2config.yaml"
-        create_default_hy2_config
-    fi
     step_detail "部署管理脚本 v2sp.sh"
     curl -o /usr/bin/v2sp -Ls https://raw.githubusercontent.com/nsevo/v2sp-script/master/v2sp.sh
     chmod +x /usr/bin/v2sp
@@ -401,8 +324,6 @@ EOF
         "/etc/v2sp/custom_inbound.json|自定义入站|copy:/usr/local/v2sp/custom_inbound.json"
         "/etc/v2sp/geoip.dat|GeoIP 数据|copy:/usr/local/v2sp/geoip.dat"
         "/etc/v2sp/geosite.dat|Geosite 数据|copy:/usr/local/v2sp/geosite.dat"
-        "/etc/v2sp/sing_origin.json|sing-box 原始模板|generate:sing"
-        "/etc/v2sp/hy2config.yaml|Hysteria2 模板|generate:hy2"
     )
     for item in "${required_templates[@]}"; do
         IFS="|" read -r file desc action <<<"$item"
@@ -414,12 +335,6 @@ EOF
         case "$action" in
             copy:*)
                 cp "${action#copy:}" "$file" 2>/dev/null || true
-                ;;
-            generate:sing)
-                create_default_sing_origin
-                ;;
-            generate:hy2)
-                create_default_hy2_config
                 ;;
         esac
         if [[ -f $file ]]; then

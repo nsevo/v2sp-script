@@ -1,22 +1,17 @@
 #!/bin/bash
 # 一键配置
 
-# 协议映射
+# 协议映射（仅支持 Xray）
 declare -A NODE_TYPE_LABELS=(
     ["shadowsocks"]="Shadowsocks"
     ["vless"]="VLESS"
     ["vmess"]="VMess"
     ["trojan"]="Trojan"
-    ["hysteria"]="Hysteria1"
-    ["hysteria2"]="Hysteria2"
-    ["tuic"]="Tuic"
-    ["anytls"]="AnyTLS"
+    ["hysteria"]="Hysteria"
 )
 
 declare -A CORE_PROTOCOL_MATRIX=(
-    ["xray"]="shadowsocks vless vmess trojan"
-    ["sing"]="shadowsocks vless vmess trojan hysteria hysteria2 tuic anytls"
-    ["hysteria2"]="hysteria2"
+    ["xray"]="shadowsocks vless vmess trojan hysteria"
 )
 
 select_node_type() {
@@ -55,24 +50,10 @@ check_ipv6_support() {
 }
 
 add_node_config() {
-    echo -e "${green}请选择节点核心类型：${plain}"
-    echo -e "${green}1. xray${plain}"
-    echo -e "${green}2. singbox${plain}"
-    echo -e "${green}3. hysteria2${plain}"
-    read -rp "请输入：" core_type
-    if [ "$core_type" == "1" ]; then
-        core="xray"
-        core_xray=true
-    elif [ "$core_type" == "2" ]; then
-        core="sing"
-        core_sing=true
-    elif [ "$core_type" == "3" ]; then
-        core="hysteria2"
-        core_hysteria2=true
-    else
-        echo "无效的选择。请选择 1 2 3。"
-        continue
-    fi
+    # 固定使用 xray 内核
+    core="xray"
+    core_xray=true
+    echo -e "${green}使用 Xray 内核${plain}"
     while true; do
         read -rp "请输入节点Node ID：" NodeID
         # 判断NodeID是否为正整数
@@ -89,7 +70,7 @@ add_node_config() {
     istls="n"
     if [ "$NodeType" == "vless" ]; then
         read -rp "请选择是否为reality节点？(y/n)" isreality
-    elif [ "$NodeType" == "hysteria" ] || [ "$NodeType" == "hysteria2" ] || [ "$NodeType" == "tuic" ] || [ "$NodeType" == "anytls" ]; then
+    elif [ "$NodeType" == "hysteria" ]; then
         fastopen=false
         istls="y"
     fi
@@ -116,16 +97,9 @@ add_node_config() {
             echo -e "${red}请手动修改配置文件后重启 v2sp！${plain}"
         fi
     fi
-    ipv6_support=$(check_ipv6_support)
-    listen_ip="0.0.0.0"
-    if [ "$ipv6_support" -eq 1 ]; then
-        listen_ip="::"
-    fi
-    node_config=""
-    if [ "$core_type" == "1" ]; then 
+    # 生成 Xray 节点配置（Core 字段可省略，自动默认为 xray）
     node_config=$(cat <<EOF
 {
-            "Core": "$core",
             "ApiHost": "$ApiHost",
             "ApiKey": "$ApiKey",
             "NodeID": $NodeID,
@@ -154,66 +128,6 @@ add_node_config() {
         },
 EOF
 )
-    elif [ "$core_type" == "2" ]; then
-    node_config=$(cat <<EOF
-{
-            "Core": "$core",
-            "ApiHost": "$ApiHost",
-            "ApiKey": "$ApiKey",
-            "NodeID": $NodeID,
-            "NodeType": "$NodeType",
-            "Timeout": 30,
-            "ListenIP": "$listen_ip",
-            "SendIP": "0.0.0.0",
-            "DeviceOnlineMinTraffic": 200,
-            "MinReportTraffic": 0,
-            "TCPFastOpen": $fastopen,
-            "SniffEnabled": true,
-            "CertConfig": {
-                "CertMode": "$certmode",
-                "RejectUnknownSni": false,
-                "CertDomain": "$certdomain",
-                "CertFile": "/etc/v2sp/fullchain.cer",
-                "KeyFile": "/etc/v2sp/cert.key",
-                "Email": "noreply@v2sp.com",
-                "Provider": "cloudflare",
-                "DNSEnv": {
-                    "EnvName": "env1"
-                }
-            }
-        },
-EOF
-)
-    elif [ "$core_type" == "3" ]; then
-    node_config=$(cat <<EOF
-{
-            "Core": "$core",
-            "ApiHost": "$ApiHost",
-            "ApiKey": "$ApiKey",
-            "NodeID": $NodeID,
-            "NodeType": "$NodeType",
-            "Hysteria2ConfigPath": "/etc/v2sp/hy2config.yaml",
-            "Timeout": 30,
-            "ListenIP": "",
-            "SendIP": "0.0.0.0",
-            "DeviceOnlineMinTraffic": 200,
-            "MinReportTraffic": 0,
-            "CertConfig": {
-                "CertMode": "$certmode",
-                "RejectUnknownSni": false,
-                "CertDomain": "$certdomain",
-                "CertFile": "/etc/v2sp/fullchain.cer",
-                "KeyFile": "/etc/v2sp/cert.key",
-                "Email": "noreply@v2sp.com",
-                "Provider": "cloudflare",
-                "DNSEnv": {
-                    "EnvName": "env1"
-                }
-            }
-        },
-EOF
-)
-    fi
     nodes_config+=("$node_config")
 }
 
@@ -232,9 +146,7 @@ generate_config_file() {
     
     nodes_config=()
     first_node=true
-    core_xray=false
-    core_sing=false
-    core_hysteria2=false
+    core_xray=true
     fixed_api_info=false
     check_api=false
     
@@ -278,34 +190,6 @@ generate_config_file() {
     },"
     fi
 
-    # 检查并添加sing核心配置
-    if [ "$core_sing" = true ]; then
-        cores_config+="
-    {
-        \"Type\": \"sing\",
-        \"Log\": {
-            \"Level\": \"error\",
-            \"Timestamp\": true
-        },
-        \"NTP\": {
-            \"Enable\": false,
-            \"Server\": \"time.apple.com\",
-            \"ServerPort\": 0
-        },
-        \"OriginalPath\": \"/etc/v2sp/sing_origin.json\"
-    },"
-    fi
-
-    # 检查并添加hysteria2核心配置
-    if [ "$core_hysteria2" = true ]; then
-        cores_config+="
-    {
-        \"Type\": \"hysteria2\",
-        \"Log\": {
-            \"Level\": \"error\"
-        }
-    },"
-    fi
 
     # 移除最后一个逗号并关闭数组
     cores_config+="]"
@@ -382,74 +266,6 @@ EOF
         }
     ]
 }
-EOF
-    ipv6_support=$(check_ipv6_support)
-    dnsstrategy="ipv4_only"
-    if [ "$ipv6_support" -eq 1 ]; then
-        dnsstrategy="prefer_ipv4"
-    fi
-    # 创建 sing_origin.json 文件
-    cat <<EOF > /etc/v2sp/sing_origin.json
-{
-  "dns": {
-    "servers": [
-      {
-        "tag": "cf",
-        "address": "1.1.1.1"
-      }
-    ],
-    "strategy": "$dnsstrategy"
-  },
-  "outbounds": [
-    {
-      "tag": "direct",
-      "type": "direct",
-      "domain_resolver": {
-        "server": "cf",
-        "strategy": "$dnsstrategy"
-      }
-    },
-    {
-      "type": "block",
-      "tag": "block"
-    }
-  ],
-  "route": {
-    "rules": [
-      {
-        "ip_is_private": true,
-        "outbound": "block"
-      }
-    ]
-  },
-  "experimental": {
-    "cache_file": {
-      "enabled": true
-    }
-  }
-}
-EOF
-
-    # 创建 hy2config.yaml 文件           
-    cat <<EOF > /etc/v2sp/hy2config.yaml
-quic:
-  initStreamReceiveWindow: 8388608
-  maxStreamReceiveWindow: 8388608
-  initConnReceiveWindow: 20971520
-  maxConnReceiveWindow: 20971520
-  maxIdleTimeout: 30s
-  maxIncomingStreams: 1024
-  disablePathMTUDiscovery: false
-ignoreClientBandwidth: false
-disableUDP: false
-udpIdleTimeout: 60s
-resolver:
-  type: system
-masquerade:
-  type: proxy
-  proxy:
-    url: https://www.bing.com
-    rewriteHost: true
 EOF
     echo -e "${green}v2sp 配置文件生成完成,正在重新启动服务${plain}"
     v2sp restart
