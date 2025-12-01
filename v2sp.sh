@@ -15,7 +15,7 @@ fetch_initconfig_and_run() {
         echo -e "${red}下载 initconfig.sh 失败，请检查网络连接${plain}"
         rm -f "$tmp_script"
         return 1
-    }
+    fi
     # shellcheck disable=SC1090
     source "$tmp_script"
     rm -f "$tmp_script"
