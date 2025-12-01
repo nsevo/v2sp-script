@@ -37,10 +37,11 @@ print_center() {
 print_columns() {
     local left="$1"
     local right="$2"
-    local width=$(get_term_width)
+    local width
+    width=$(get_term_width)
     local mid=$(( width / 2 ))
-    # Use echo -e to properly interpret escape sequences
-    echo -e "  $(printf "%-${mid}s" "$left")$right"
+    # %-*b ensures left column width with ANSI support; %b for right to keep colors
+    printf "  %-*b%b\n" "$mid" "$left" "$right"
 }
 
 # UI Elements  
@@ -50,6 +51,13 @@ ARROW="${cyan}>${plain}"
 BULLET="${green}*${plain}"
 INFO="${blue}[i]${plain}"
 WARN="${yellow}[!]${plain}"
+
+# Metrics cache
+NET_LAST_RX=0
+NET_LAST_TX=0
+NET_LAST_TS=0
+CPU_LAST_TOTAL=0
+CPU_LAST_IDLE=0
 
 fetch_initconfig_and_run() {
     local tmp_script
@@ -154,7 +162,7 @@ confirm_restart() {
     if [[ $? == 0 ]]; then
         restart
     else
-        show_menu
+        before_show_menu
     fi
 }
 
@@ -162,7 +170,6 @@ before_show_menu() {
     echo ""
     echo -ne " ${ARROW} Press ${bold}Enter${plain} to return to main menu..."
     read temp
-    show_menu
 }
 
 install() {
@@ -219,9 +226,6 @@ config() {
 uninstall() {
     confirm "确定要卸载 v2sp 吗?" "n"
     if [[ $? != 0 ]]; then
-        if [[ $# == 0 ]]; then
-            show_menu
-        fi
         return 0
     fi
     
@@ -562,6 +566,38 @@ get_resource_usage() {
     fi
 }
 
+# Get CPU usage snapshot
+get_cpu_usage() {
+    if [[ ! -f /proc/stat ]]; then
+        echo "N/A"
+        return
+    fi
+
+    local cpu user nice system idle iowait irq softirq steal guest guest_nice
+    read -r cpu user nice system idle iowait irq softirq steal guest guest_nice < /proc/stat
+    local idle_total=$((idle + iowait))
+    local non_idle=$((user + nice + system + irq + softirq + steal))
+    local total=$((idle_total + non_idle))
+
+    if [[ $CPU_LAST_TOTAL -eq 0 ]]; then
+        CPU_LAST_TOTAL=$total
+        CPU_LAST_IDLE=$idle_total
+        echo "--%"
+        return
+    fi
+
+    local totald=$((total - CPU_LAST_TOTAL))
+    local idled=$((idle_total - CPU_LAST_IDLE))
+    local usage=0
+    if [[ $totald -gt 0 ]]; then
+        usage=$(( (100 * (totald - idled)) / totald ))
+    fi
+
+    CPU_LAST_TOTAL=$total
+    CPU_LAST_IDLE=$idle_total
+    printf "%02d%%" "$usage"
+}
+
 # Get main network interface
 get_main_interface() {
     # Try to find the main interface with default route
@@ -573,35 +609,44 @@ get_main_interface() {
     echo "$iface"
 }
 
-# Get network speed (requires 1 second sampling)
+# Get network speed using cached samples
 get_network_speed() {
     local iface=$(get_main_interface)
     if [[ -z "$iface" ]] || [[ ! -f /proc/net/dev ]]; then
-        echo "N/A"
+        echo "Down 0bps / Up 0bps"
         return
     fi
     
-    # First sample
-    local rx1=$(cat /proc/net/dev | grep "$iface" | awk '{print $2}')
-    local tx1=$(cat /proc/net/dev | grep "$iface" | awk '{print $10}')
-    
-    if [[ -z "$rx1" ]] || [[ -z "$tx1" ]]; then
-        echo "N/A"
+    local stats=$(grep "$iface" /proc/net/dev 2>/dev/null)
+    local rx=$(echo "$stats" | awk '{print $2}')
+    local tx=$(echo "$stats" | awk '{print $10}')
+    if [[ -z "$rx" ]] || [[ -z "$tx" ]]; then
+        echo "Down 0bps / Up 0bps"
         return
     fi
-    
-    # Wait 1 second
-    sleep 1
-    
-    # Second sample
-    local rx2=$(cat /proc/net/dev | grep "$iface" | awk '{print $2}')
-    local tx2=$(cat /proc/net/dev | grep "$iface" | awk '{print $10}')
-    
-    # Calculate speed in bytes per second, convert to bits
-    local rx_bits=$(((rx2 - rx1) * 8))
-    local tx_bits=$(((tx2 - tx1) * 8))
-    
-    # Convert to human readable format (bps/Kbps/Mbps)
+
+    local now=$(date +%s)
+    if [[ $NET_LAST_TS -eq 0 ]]; then
+        NET_LAST_TS=$now
+        NET_LAST_RX=$rx
+        NET_LAST_TX=$tx
+        echo "Down 0bps / Up 0bps"
+        return
+    fi
+
+    local delta_t=$((now - NET_LAST_TS))
+    [[ $delta_t -le 0 ]] && delta_t=1
+    local rx_delta=$((rx - NET_LAST_RX))
+    local tx_delta=$((tx - NET_LAST_TX))
+    (( rx_delta < 0 )) && rx_delta=0
+    (( tx_delta < 0 )) && tx_delta=0
+    local rx_bits=$(( rx_delta * 8 / delta_t ))
+    local tx_bits=$(( tx_delta * 8 / delta_t ))
+
+    NET_LAST_TS=$now
+    NET_LAST_RX=$rx
+    NET_LAST_TX=$tx
+
     local rx_display=$(format_bits $rx_bits)
     local tx_display=$(format_bits $tx_bits)
     
@@ -622,7 +667,7 @@ format_bits() {
 
 # Show detailed status (single line, minimal)
 show_status() {
-    local status="" auto="" uptime="" memory="" network=""
+    local status="" auto="" uptime="" memory="" network="" cpu=""
     
     check_status
     case $? in
@@ -636,15 +681,54 @@ show_status() {
     
     uptime=$(get_uptime)
     memory=$(get_resource_usage)
+    cpu=$(get_cpu_usage)
     
     # Single line status
-    echo -e "  Status: ${status}  |  Auto: ${auto}  |  Up: ${uptime}  |  Mem: ${memory}"
+    echo -e "  Status: ${status}  |  Auto: ${auto}  |  Up: ${uptime}  |  CPU: ${cpu}  |  Mem: ${memory}"
     
-    # Optional: Quick network check
-    echo -ne "  ${dim}Net...${plain}\r"
+    # Network snapshot
     network=$(get_network_speed)
-    [[ "$network" != "N/A" ]] && echo -e "  ${cyan}${network}${plain}                    " || echo -e "                    \r"
+    echo -e "  ${cyan}${network}${plain}"
     echo ""
+}
+
+show_tools_menu() {
+    while true; do
+        clear
+        echo ""
+        print_line "="
+        print_center "${bold}${cyan}v2sp System Tools${plain}"
+        print_line "="
+        echo ""
+        print_columns "  ${green}[15]${plain} Install BBR" "  ${green}[18]${plain} Open all ports"
+        echo ""
+        print_line "-"
+        echo -e "  ${red}[Q]${plain} Back"
+        print_line "="
+        echo ""
+        echo -ne " ${ARROW} "
+        read -r tool_choice
+        tool_choice=$(echo "$tool_choice" | tr '[:upper:]' '[:lower:]')
+        case "${tool_choice}" in
+            15)
+                install_bbr
+                before_show_menu
+                return
+                ;;
+            18)
+                open_ports
+                before_show_menu
+                return
+                ;;
+            q)
+                return
+                ;;
+            *)
+                echo -e " ${CROSS} Invalid selection"
+                sleep 1
+                ;;
+        esac
+    done
 }
 
 # Real-time monitor (Press M)
@@ -772,34 +856,49 @@ show_usage() {
     echo "------------------------------------------"
 }
 
-show_menu() {
+render_main_menu() {
     clear
     echo ""
     print_center "${bold}${cyan}v2sp${plain}"
     echo ""
-    
-    # Status
     show_status
-    
-    # Menu
-    echo -e "${bold}Commands${plain}"
+    echo -e "${bold}Quick Actions${plain}"
     print_line "-"
-    echo -e "  ${bold}[R]${plain} Restart  ${bold}[S]${plain} Stop  ${bold}[L]${plain} Logs  ${bold}[M]${plain} Monitor  ${bold}[U]${plain} Update  ${bold}[E]${plain} Config"
+    print_columns "  ${bold}[R]${plain} Restart    ${bold}[S]${plain} Stop    ${bold}[L]${plain} Logs" "  ${bold}[M]${plain} Monitor    ${bold}[U]${plain} Update    ${bold}[E]${plain} Config"
+    print_columns "  ${bold}[T]${plain} Tools" "  ${bold}[H]${plain} Help"
     echo ""
-    print_columns "  ${green}1${plain} Install" "  ${green}6${plain} Start      ${green}11${plain} Enable Auto   ${green}15${plain} Install BBR"
-    print_columns "  ${green}2${plain} Update" "  ${green}7${plain} Stop       ${green}12${plain} Disable Auto  ${green}16${plain} Gen X25519"
-    print_columns "  ${green}3${plain} Uninstall" "  ${green}8${plain} Restart    ${green}0${plain} Edit Config   ${green}17${plain} Gen Config"
-    print_columns "  ${green}4${plain} Version" "  ${green}9${plain} Status                    ${green}18${plain} Open Ports"
-    print_columns "  ${green}5${plain} Update Script" "  ${green}10${plain} Logs       ${red}Q${plain} Exit"
+    echo -e "${bold}Service Control${plain}"
+    print_line "-"
+    print_columns "  ${green}[6]${plain} Start service" "  ${green}[7]${plain} Stop service"
+    print_columns "  ${green}[8]${plain} Restart service" "  ${green}[9]${plain} Show status"
+    print_columns "  ${green}[10]${plain} View logs" "  ${green}[11]${plain} Enable auto-start"
+    print_columns "  ${green}[12]${plain} Disable auto-start" ""
     echo ""
+    echo -e "${bold}Configuration${plain}"
+    print_line "-"
+    print_columns "  ${green}[0]${plain} Edit config" "  ${green}[17]${plain} Generate config"
+    print_columns "  ${green}[16]${plain} Generate X25519 key" ""
+    echo ""
+    echo -e "${bold}Maintenance${plain}"
+    print_line "-"
+    check_status
+    local install_state=$?
+    if [[ ${install_state} -eq 2 ]]; then
+        print_columns "  ${green}[1]${plain} Install v2sp" ""
+    fi
+    print_columns "  ${green}[2]${plain} Update v2sp" "  ${green}[4]${plain} Show version"
+    print_columns "  ${green}[5]${plain} Update script" "  ${green}[3]${plain} Uninstall v2sp"
+    echo ""
+    print_line "-"
+    echo -e "  ${bold}[T]${plain} System tools       ${red}[Q]${plain} Exit"
     print_line "="
-    
     echo -ne " ${ARROW} "
-    read -r num
-    
-    num=$(echo "$num" | tr '[:upper:]' '[:lower:]')
-    
+}
+
+handle_menu_choice() {
+    local num="$1"
     case "${num}" in
+        "" ) return 0 ;;
         0|e) config ;;
         1) check_uninstall && install ;;
         2|u) check_install && update ;;
@@ -817,11 +916,24 @@ show_menu() {
         16) check_install && generate_x25519_key ;;
         17) generate_config_file ;;
         18) open_ports ;;
-        m) check_install && monitor_live && show_menu ;;
+        m) check_install && monitor_live ;;
+        t) show_tools_menu ;;
         h) show_usage && before_show_menu ;;
         q) exit 0 ;;
         *) echo -e " ${CROSS} Invalid" && sleep 1 ;;
     esac
+    return 0
+}
+
+show_menu() {
+    local num=""
+    while true; do
+        render_main_menu
+        if read -t 1 -r num; then
+            num=$(echo "$num" | tr '[:upper:]' '[:lower:]')
+            handle_menu_choice "$num"
+        fi
+    done
 }
 
 
