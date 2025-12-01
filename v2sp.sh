@@ -20,7 +20,7 @@ get_term_width() {
 
 # Print a line with padding
 print_line() {
-    local char="${1:--}"
+    local char="${1:-=}"
     local width=$(get_term_width)
     printf "%${width}s\n" | tr ' ' "$char"
 }
@@ -42,13 +42,13 @@ print_columns() {
     printf "  %-${mid}s%s\n" "$left" "$right"
 }
 
-# UI Elements
-CHECKMARK="${green}✓${plain}"
-CROSS="${red}✗${plain}"
-ARROW="${cyan}▸${plain}"
-BULLET="${white}●${plain}"
-INFO="${blue}ℹ${plain}"
-WARN="${yellow}⚠${plain}"
+# UI Elements  
+CHECKMARK="${green}[+]${plain}"
+CROSS="${red}[-]${plain}"
+ARROW="${cyan}>${plain}"
+BULLET="${green}*${plain}"
+INFO="${blue}[i]${plain}"
+WARN="${yellow}[!]${plain}"
 
 fetch_initconfig_and_run() {
     local tmp_script
@@ -226,7 +226,7 @@ uninstall() {
     
     echo ""
     echo -e "${bold}Uninstalling v2sp...${plain}"
-    print_line "─"
+    print_line "-"
     
     # Stop and disable service
     echo -ne "  ${ARROW} Stopping service..."
@@ -254,8 +254,8 @@ uninstall() {
     rm /usr/bin/v2sp -f >/dev/null 2>&1
     echo -e "\r  ${CHECKMARK} Script removed       "
     
-    print_line "─"
-    echo -e "  ${green}✓ v2sp 已完全移除${plain}"
+    print_line "-"
+    echo -e "  ${green}[OK] v2sp 已完全移除${plain}"
     echo ""
 
     if [[ $# == 0 ]]; then
@@ -274,7 +274,7 @@ start() {
     else
         echo ""
         echo -e "${bold}Starting v2sp...${plain}"
-        print_line "─"
+        print_line "-"
         
         echo -ne "  ${ARROW} Initializing service..."
         if [[ x"${release}" == x"alpine" ]]; then
@@ -287,13 +287,13 @@ start() {
         check_status
         if [[ $? == 0 ]]; then
             echo -e "\r  ${CHECKMARK} Service initialized  "
-            print_line "─"
-            echo -e "  ${green}✓ v2sp started successfully${plain}"
+            print_line "-"
+            echo -e "  ${green}[OK] v2sp started successfully${plain}"
             echo -e "  ${dim}Use 'v2sp log' to view logs${plain}"
         else
             echo -e "\r  ${CROSS} Service failed       "
-            print_line "─"
-            echo -e "  ${red}✗ Failed to start v2sp${plain}"
+            print_line "-"
+            echo -e "  ${red}[FAIL] Failed to start v2sp${plain}"
             echo -e "  ${INFO} Check logs: ${bold}v2sp log${plain}"
         fi
     fi
@@ -306,7 +306,7 @@ start() {
 stop() {
     echo ""
     echo -e "${bold}Stopping v2sp...${plain}"
-    print_line "─"
+    print_line "-"
     
     echo -ne "  ${ARROW} Sending stop signal..."
     if [[ x"${release}" == x"alpine" ]]; then
@@ -319,12 +319,12 @@ stop() {
     check_status
     if [[ $? == 1 ]]; then
         echo -e "\r  ${CHECKMARK} Service stopped      "
-        print_line "─"
-        echo -e "  ${green}✓ v2sp stopped successfully${plain}"
+        print_line "-"
+        echo -e "  ${green}[OK] v2sp stopped successfully${plain}"
     else
         echo -e "\r  ${WARN} Service stopping...   "
-        print_line "─"
-        echo -e "  ${yellow}⚠ Stop operation may take longer${plain}"
+        print_line "-"
+        echo -e "  ${yellow}[WARN] Stop operation may take longer${plain}"
         echo -e "  ${INFO} Check status: ${bold}v2sp status${plain}"
     fi
 
@@ -336,7 +336,7 @@ stop() {
 restart() {
     echo ""
     echo -e "${bold}Restarting v2sp...${plain}"
-    print_line "─"
+    print_line "-"
     
     echo -ne "  ${ARROW} Stopping service..."
     if [[ x"${release}" == x"alpine" ]]; then
@@ -358,12 +358,12 @@ restart() {
     check_status
     if [[ $? == 0 ]]; then
         echo -e "\r  ${CHECKMARK} Service started      "
-        print_line "─"
-        echo -e "  ${green}✓ v2sp restarted successfully${plain}"
+        print_line "-"
+        echo -e "  ${green}[OK] v2sp restarted successfully${plain}"
     else
         echo -e "\r  ${CROSS} Service failed       "
-        print_line "─"
-        echo -e "  ${red}✗ Failed to restart v2sp${plain}"
+        print_line "-"
+        echo -e "  ${red}[FAIL] Failed to restart v2sp${plain}"
         echo -e "  ${INFO} Check logs: ${bold}v2sp log${plain}"
     fi
     
@@ -386,7 +386,7 @@ status() {
 enable() {
     echo ""
     echo -e "${bold}Enabling auto-start...${plain}"
-    print_line "─"
+    print_line "-"
     
     if [[ x"${release}" == x"alpine" ]]; then
         rc-update add v2sp >/dev/null 2>&1
@@ -396,12 +396,12 @@ enable() {
     
     if [[ $? == 0 ]]; then
         echo -e "  ${CHECKMARK} Auto-start enabled"
-        print_line "─"
-        echo -e "  ${green}✓ v2sp will start on system boot${plain}"
+        print_line "-"
+        echo -e "  ${green}[OK] v2sp will start on system boot${plain}"
     else
         echo -e "  ${CROSS} Failed to enable"
-        print_line "─"
-        echo -e "  ${red}✗ Operation failed${plain}"
+        print_line "-"
+        echo -e "  ${red}[FAIL] Operation failed${plain}"
         echo -e "  ${INFO} Check system permissions"
     fi
 
@@ -413,7 +413,7 @@ enable() {
 disable() {
     echo ""
     echo -e "${bold}Disabling auto-start...${plain}"
-    print_line "─"
+    print_line "-"
     
     if [[ x"${release}" == x"alpine" ]]; then
         rc-update del v2sp >/dev/null 2>&1
@@ -423,12 +423,12 @@ disable() {
     
     if [[ $? == 0 ]]; then
         echo -e "  ${CHECKMARK} Auto-start disabled"
-        print_line "─"
-        echo -e "  ${green}✓ v2sp will not start on boot${plain}"
+        print_line "-"
+        echo -e "  ${green}[OK] v2sp will not start on boot${plain}"
     else
         echo -e "  ${CROSS} Failed to disable"
-        print_line "─"
-        echo -e "  ${red}✗ Operation failed${plain}"
+        print_line "-"
+        echo -e "  ${red}[FAIL] Operation failed${plain}"
         echo -e "  ${INFO} Check system permissions"
     fi
 
@@ -619,61 +619,84 @@ format_bits() {
     fi
 }
 
-# Show detailed status
+# Show detailed status (single line, minimal)
 show_status() {
-    local status_icon="" status_text="" auto_icon="" auto_text=""
+    local status="" auto="" uptime="" memory="" network=""
     
     check_status
     case $? in
-        0)
-            status_icon="${BULLET}"
-            status_text="${green}Running${plain}"
-            ;;
-        1)
-            status_icon="${WARN}"
-            status_text="${yellow}Stopped${plain}"
-            ;;
-        2)
-            status_icon="${CROSS}"
-            status_text="${red}Not Installed${plain}"
-            echo ""
-            echo -e "  ${status_icon} Service: ${status_text}"
-            echo ""
-            return
+        0) status="${green}RUN${plain}" ;;
+        1) status="${yellow}STOP${plain}" ;;
+        2) status="${red}N/A${plain}" && echo -e "  Status: ${status}" && echo "" && return ;;
     esac
     
     check_enabled
-    if [[ $? == 0 ]]; then
-        auto_icon="${CHECKMARK}"
-        auto_text="${green}Enabled${plain}"
-    else
-        auto_icon="${CROSS}"
-        auto_text="${red}Disabled${plain}"
-    fi
+    [[ $? == 0 ]] && auto="${green}ON${plain}" || auto="${red}OFF${plain}"
     
-    local uptime=$(get_uptime)
-    local memory=$(get_resource_usage)
+    uptime=$(get_uptime)
+    memory=$(get_resource_usage)
     
+    # Single line status
+    echo -e "  Status: ${status}  |  Auto: ${auto}  |  Up: ${uptime}  |  Mem: ${memory}"
+    
+    # Optional: Quick network check
+    echo -ne "  ${dim}Net...${plain}\r"
+    network=$(get_network_speed)
+    [[ "$network" != "N/A" ]] && echo -e "  ${cyan}${network}${plain}                    " || echo -e "                    \r"
     echo ""
-    print_line "─"
-    echo -e "  ${status_icon} Service: ${status_text}        ${auto_icon} Auto-start: ${auto_text}"
+}
+
+# Real-time monitor (Press M)
+monitor_live() {
+    trap 'return' INT  # Catch Ctrl+C to return to menu
     
-    # Show resource info if available
-    if [[ "$uptime" != "N/A" ]] || [[ "$memory" != "N/A" ]]; then
-        echo -e "  ⏱ Uptime: ${uptime}        ⚙ Memory: ${memory}"
-    fi
-    
-    # Show network speed (with loading indicator)
-    echo -ne "  ${dim}Loading network speed...${plain}\r"
-    local net_speed=$(get_network_speed)
-    if [[ "$net_speed" != "N/A" ]]; then
-        echo -e "  >> Network: ${cyan}${net_speed}${plain}                              "
-    else
-        echo -e "                                        \r"
-    fi
-    
-    print_line "─"
-    echo ""
+    while true; do
+        tput clear
+        tput cup 0 0
+        
+        echo -e "${bold}${cyan}v2sp Monitor${plain} ${dim}| Press Ctrl+C to exit${plain}"
+        print_line "="
+        
+        # Service status
+        check_status
+        case $? in
+            0) echo -e "Service:    ${green}● RUNNING${plain}" ;;
+            1) echo -e "Service:    ${yellow}○ STOPPED${plain}" && break ;;
+            2) echo -e "Service:    ${red}✕ NOT INSTALLED${plain}" && break ;;
+        esac
+        
+        check_enabled
+        [[ $? == 0 ]] && echo -e "Auto-start: ${green}ENABLED${plain}" || echo -e "Auto-start: ${red}DISABLED${plain}"
+        
+        # Resources
+        echo ""
+        echo -e "${bold}Resources${plain}"
+        echo -e "Uptime:  $(get_uptime)"
+        echo -e "Memory:  $(get_resource_usage)"
+        
+        # Real-time network
+        echo ""
+        echo -e "${bold}Network ($(get_main_interface))${plain}"
+        
+        local rx1=$(cat /proc/net/dev 2>/dev/null | grep "$(get_main_interface)" | awk '{print $2}')
+        local tx1=$(cat /proc/net/dev 2>/dev/null | grep "$(get_main_interface)" | awk '{print $10}')
+        sleep 1
+        local rx2=$(cat /proc/net/dev 2>/dev/null | grep "$(get_main_interface)" | awk '{print $2}')
+        local tx2=$(cat /proc/net/dev 2>/dev/null | grep "$(get_main_interface)" | awk '{print $10}')
+        
+        if [[ -n "$rx1" ]] && [[ -n "$tx1" ]]; then
+            local rx_speed=$(format_bits $((($rx2 - $rx1) * 8)))
+            local tx_speed=$(format_bits $((($tx2 - $tx1) * 8)))
+            echo -e "Down:    ${cyan}${rx_speed}/s${plain}"
+            echo -e "Up:      ${cyan}${tx_speed}/s${plain}"
+        fi
+        
+        echo ""
+        print_line "="
+        echo -e "${dim}Refreshing every 2s...${plain}"
+        
+        sleep 1
+    done
 }
 
 show_enable_status() {
@@ -750,56 +773,29 @@ show_usage() {
 
 show_menu() {
     clear
-    
-    # Header
     echo ""
-    print_center "${bold}${cyan}v2sp Control Center${plain}"
-    print_center "${dim}https://github.com/nsevo/v2sp${plain}"
+    print_center "${bold}${cyan}v2sp${plain}"
     echo ""
     
     # Status
     show_status
     
-    # Quick Actions
-    echo -e "${bold}Quick Actions${plain}"
-    print_line "─"
-    print_columns "  ${bold}[R]${plain} Restart    ${bold}[S]${plain} Stop    ${bold}[E]${plain} Edit Config" "  ${bold}[L]${plain} Logs    ${bold}[U]${plain} Update    ${bold}[H]${plain} Help"
+    # Menu
+    echo -e "${bold}Commands${plain}"
+    print_line "-"
+    echo -e "  ${bold}[R]${plain} Restart  ${bold}[S]${plain} Stop  ${bold}[L]${plain} Logs  ${bold}[M]${plain} Monitor  ${bold}[U]${plain} Update  ${bold}[E]${plain} Config"
     echo ""
-    
-    # Main Menu
-    echo -e "${bold}Service Management${plain}"
-    print_line "─"
-    print_columns "  ${green}[1]${plain} Install v2sp" "  ${green}[6]${plain} Start service"
-    print_columns "  ${green}[2]${plain} Update v2sp" "  ${green}[7]${plain} Stop service"
-    print_columns "  ${green}[3]${plain} Uninstall v2sp" "  ${green}[8]${plain} Restart service"
-    print_columns "  ${green}[4]${plain} Show version" "  ${green}[9]${plain} Show status"
-    print_columns "  ${green}[5]${plain} Update script" "  ${green}[10]${plain} View logs"
+    print_columns "  ${green}1${plain} Install" "  ${green}6${plain} Start      ${green}11${plain} Enable Auto   ${green}15${plain} Install BBR"
+    print_columns "  ${green}2${plain} Update" "  ${green}7${plain} Stop       ${green}12${plain} Disable Auto  ${green}16${plain} Gen X25519"
+    print_columns "  ${green}3${plain} Uninstall" "  ${green}8${plain} Restart    ${green}0${plain} Edit Config   ${green}17${plain} Gen Config"
+    print_columns "  ${green}4${plain} Version" "  ${green}9${plain} Status                    ${green}18${plain} Open Ports"
+    print_columns "  ${green}5${plain} Update Script" "  ${green}10${plain} Logs       ${red}Q${plain} Exit"
     echo ""
+    print_line "="
     
-    # Auto-start
-    echo -e "${bold}Auto-start${plain}"
-    print_line "─"
-    print_columns "  ${green}[11]${plain} Enable auto-start" "  ${green}[12]${plain} Disable auto-start"
-    echo ""
-    
-    # System Tools
-    echo -e "${bold}System Tools${plain}"
-    print_line "─"
-    print_columns "  ${green}[15]${plain} Install BBR" "  ${green}[17]${plain} Generate config"
-    print_columns "  ${green}[16]${plain} Generate X25519 key" "  ${green}[18]${plain} Open all ports"
-    echo ""
-    
-    # Other
-    print_line "─"
-    echo -e "  ${green}[0]${plain} Edit configuration    ${red}[Q]${plain} Exit"
-    print_line "─"
-    
-    # Prompt
-    echo ""
-    echo -ne " ${ARROW} Enter choice [0-18] or [R/S/E/L/U/H/Q]: "
+    echo -ne " ${ARROW} "
     read -r num
     
-    # Convert to lowercase
     num=$(echo "$num" | tr '[:upper:]' '[:lower:]')
     
     case "${num}" in
@@ -820,9 +816,10 @@ show_menu() {
         16) check_install && generate_x25519_key ;;
         17) generate_config_file ;;
         18) open_ports ;;
+        m) check_install && monitor_live && show_menu ;;
         h) show_usage && before_show_menu ;;
         q) exit 0 ;;
-        *) echo -e "\n ${CROSS} ${red}Invalid input${plain}" && sleep 1 ;;
+        *) echo -e " ${CROSS} Invalid" && sleep 1 ;;
     esac
 }
 
