@@ -39,7 +39,8 @@ print_columns() {
     local right="$2"
     local width=$(get_term_width)
     local mid=$(( width / 2 ))
-    printf "  %-${mid}s%s\n" "$left" "$right"
+    # Use echo -e to properly interpret escape sequences
+    echo -e "  $(printf "%-${mid}s" "$left")$right"
 }
 
 # UI Elements  
