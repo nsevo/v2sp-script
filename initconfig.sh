@@ -145,7 +145,7 @@ add_node_config() {
                 "CertDomain": "$certdomain",
                 "CertFile": "/etc/v2sp/fullchain.cer",
                 "KeyFile": "/etc/v2sp/cert.key",
-                "Email": "noreply@v2sp.local",
+                "Email": "noreply@v2sp.com",
                 "Provider": "cloudflare",
                 "DNSEnv": {
                     "EnvName": "env1"
@@ -175,7 +175,7 @@ EOF
                 "CertDomain": "$certdomain",
                 "CertFile": "/etc/v2sp/fullchain.cer",
                 "KeyFile": "/etc/v2sp/cert.key",
-                "Email": "noreply@v2sp.local",
+                "Email": "noreply@v2sp.com",
                 "Provider": "cloudflare",
                 "DNSEnv": {
                     "EnvName": "env1"
@@ -204,7 +204,7 @@ EOF
                 "CertDomain": "$certdomain",
                 "CertFile": "/etc/v2sp/fullchain.cer",
                 "KeyFile": "/etc/v2sp/cert.key",
-                "Email": "noreply@v2sp.local",
+                "Email": "noreply@v2sp.com",
                 "Provider": "cloudflare",
                 "DNSEnv": {
                     "EnvName": "env1"
