@@ -51,8 +51,8 @@ check_ipv6_support() {
 
 add_node_config() {
     # 固定使用 xray 内核
-    core="xray"
-    core_xray=true
+        core="xray"
+        core_xray=true
     echo -e "${green}使用 Xray 内核${plain}"
     while true; do
         read -rp "请输入节点Node ID：" NodeID

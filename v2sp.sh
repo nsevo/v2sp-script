@@ -1,9 +1,54 @@
 #!/bin/bash
 
+# Color definitions
 red='\033[0;31m'
 green='\033[0;32m'
 yellow='\033[0;33m'
+blue='\033[0;34m'
+cyan='\033[0;36m'
+white='\033[0;37m'
+bold='\033[1m'
+dim='\033[2m'
 plain='\033[0m'
+
+# Get terminal width
+get_term_width() {
+    local cols
+    cols=$(tput cols 2>/dev/null) || cols=80
+    echo "$cols"
+}
+
+# Print a line with padding
+print_line() {
+    local char="${1:--}"
+    local width=$(get_term_width)
+    printf "%${width}s\n" | tr ' ' "$char"
+}
+
+# Print centered text
+print_center() {
+    local text="$1"
+    local width=$(get_term_width)
+    local padding=$(( (width - ${#text}) / 2 ))
+    printf "%${padding}s%s\n" "" "$text"
+}
+
+# Print two columns
+print_columns() {
+    local left="$1"
+    local right="$2"
+    local width=$(get_term_width)
+    local mid=$(( width / 2 ))
+    printf "  %-${mid}s%s\n" "$left" "$right"
+}
+
+# UI Elements
+CHECKMARK="${green}✓${plain}"
+CROSS="${red}✗${plain}"
+ARROW="${cyan}▸${plain}"
+BULLET="${white}●${plain}"
+INFO="${blue}ℹ${plain}"
+WARN="${yellow}⚠${plain}"
 
 fetch_initconfig_and_run() {
     local tmp_script
@@ -113,7 +158,9 @@ confirm_restart() {
 }
 
 before_show_menu() {
-    echo && echo -n -e "${yellow}按回车返回主菜单: ${plain}" && read temp
+    echo ""
+    echo -ne " ${ARROW} Press ${bold}Enter${plain} to return to main menu..."
+    read temp
     show_menu
 }
 
@@ -176,26 +223,45 @@ uninstall() {
         fi
         return 0
     fi
-    if [[ x"${release}" == x"alpine" ]]; then
-        service v2sp stop
-        rc-update del v2sp
-        rm /etc/init.d/v2sp -f
-    else
-        systemctl stop v2sp
-        systemctl disable v2sp
-        rm /etc/systemd/system/v2sp.service -f
-        systemctl daemon-reload
-        systemctl reset-failed
-    fi
-    rm /etc/v2sp/ -rf
-    rm /usr/local/v2sp/ -rf
-
+    
     echo ""
-    echo -e "卸载成功，如果你想删除此脚本，则退出脚本后运行 ${green}rm /usr/bin/v2sp -f${plain} 进行删除"
+    echo -e "${bold}Uninstalling v2sp...${plain}"
+    print_line "─"
+    
+    # Stop and disable service
+    echo -ne "  ${ARROW} Stopping service..."
+    if [[ x"${release}" == x"alpine" ]]; then
+        service v2sp stop >/dev/null 2>&1
+        rc-update del v2sp >/dev/null 2>&1
+        rm /etc/init.d/v2sp -f >/dev/null 2>&1
+    else
+        systemctl stop v2sp >/dev/null 2>&1
+        systemctl disable v2sp >/dev/null 2>&1
+        rm /etc/systemd/system/v2sp.service -f >/dev/null 2>&1
+        systemctl daemon-reload >/dev/null 2>&1
+        systemctl reset-failed >/dev/null 2>&1
+    fi
+    echo -e "\r  ${CHECKMARK} Service stopped      "
+    
+    # Remove files
+    echo -ne "  ${ARROW} Removing files..."
+    rm /etc/v2sp/ -rf >/dev/null 2>&1
+    rm /usr/local/v2sp/ -rf >/dev/null 2>&1
+    echo -e "\r  ${CHECKMARK} Files removed        "
+    
+    # Remove management script
+    echo -ne "  ${ARROW} Removing script..."
+    rm /usr/bin/v2sp -f >/dev/null 2>&1
+    echo -e "\r  ${CHECKMARK} Script removed       "
+    
+    print_line "─"
+    echo -e "  ${green}✓ v2sp 已完全移除${plain}"
     echo ""
 
     if [[ $# == 0 ]]; then
-        before_show_menu
+        echo -e "  ${dim}Press Enter to exit...${plain}"
+        read temp
+        exit 0
     fi
 }
 
@@ -203,19 +269,32 @@ start() {
     check_status
     if [[ $? == 0 ]]; then
         echo ""
-        echo -e "${green}v2sp已运行，无需再次启动，如需重启请选择重启${plain}"
+        echo -e "  ${INFO} Service is already ${green}running${plain}"
+        echo -e "  ${WARN} Use option ${bold}[8]${plain} or ${bold}[R]${plain} to restart"
     else
+        echo ""
+        echo -e "${bold}Starting v2sp...${plain}"
+        print_line "─"
+        
+        echo -ne "  ${ARROW} Initializing service..."
         if [[ x"${release}" == x"alpine" ]]; then
-            service v2sp start
+            service v2sp start >/dev/null 2>&1
         else
-            systemctl start v2sp
+            systemctl start v2sp >/dev/null 2>&1
         fi
         sleep 2
+        
         check_status
         if [[ $? == 0 ]]; then
-            echo -e "${green}v2sp 启动成功，请使用 v2sp log 查看运行日志${plain}"
+            echo -e "\r  ${CHECKMARK} Service initialized  "
+            print_line "─"
+            echo -e "  ${green}✓ v2sp started successfully${plain}"
+            echo -e "  ${dim}Use 'v2sp log' to view logs${plain}"
         else
-            echo -e "${red}v2sp可能启动失败，请稍后使用 v2sp log 查看日志信息${plain}"
+            echo -e "\r  ${CROSS} Service failed       "
+            print_line "─"
+            echo -e "  ${red}✗ Failed to start v2sp${plain}"
+            echo -e "  ${INFO} Check logs: ${bold}v2sp log${plain}"
         fi
     fi
 
@@ -225,17 +304,28 @@ start() {
 }
 
 stop() {
+    echo ""
+    echo -e "${bold}Stopping v2sp...${plain}"
+    print_line "─"
+    
+    echo -ne "  ${ARROW} Sending stop signal..."
     if [[ x"${release}" == x"alpine" ]]; then
-        service v2sp stop
+        service v2sp stop >/dev/null 2>&1
     else
-        systemctl stop v2sp
+        systemctl stop v2sp >/dev/null 2>&1
     fi
     sleep 2
+    
     check_status
     if [[ $? == 1 ]]; then
-        echo -e "${green}v2sp 停止成功${plain}"
+        echo -e "\r  ${CHECKMARK} Service stopped      "
+        print_line "─"
+        echo -e "  ${green}✓ v2sp stopped successfully${plain}"
     else
-        echo -e "${red}v2sp停止失败，可能是因为停止时间超过了两秒，请稍后查看日志信息${plain}"
+        echo -e "\r  ${WARN} Service stopping...   "
+        print_line "─"
+        echo -e "  ${yellow}⚠ Stop operation may take longer${plain}"
+        echo -e "  ${INFO} Check status: ${bold}v2sp status${plain}"
     fi
 
     if [[ $# == 0 ]]; then
@@ -244,18 +334,39 @@ stop() {
 }
 
 restart() {
+    echo ""
+    echo -e "${bold}Restarting v2sp...${plain}"
+    print_line "─"
+    
+    echo -ne "  ${ARROW} Stopping service..."
     if [[ x"${release}" == x"alpine" ]]; then
-        service v2sp restart
+        service v2sp stop >/dev/null 2>&1
     else
-        systemctl restart v2sp
+        systemctl stop v2sp >/dev/null 2>&1
+    fi
+    sleep 1
+    echo -e "\r  ${CHECKMARK} Service stopped      "
+    
+    echo -ne "  ${ARROW} Starting service..."
+    if [[ x"${release}" == x"alpine" ]]; then
+        service v2sp start >/dev/null 2>&1
+    else
+        systemctl start v2sp >/dev/null 2>&1
     fi
     sleep 2
+    
     check_status
     if [[ $? == 0 ]]; then
-        echo -e "${green}v2sp 重启成功，请使用 v2sp log 查看运行日志${plain}"
+        echo -e "\r  ${CHECKMARK} Service started      "
+        print_line "─"
+        echo -e "  ${green}✓ v2sp restarted successfully${plain}"
     else
-        echo -e "${red}v2sp可能启动失败，请稍后使用 v2sp log 查看日志信息${plain}"
+        echo -e "\r  ${CROSS} Service failed       "
+        print_line "─"
+        echo -e "  ${red}✗ Failed to restart v2sp${plain}"
+        echo -e "  ${INFO} Check logs: ${bold}v2sp log${plain}"
     fi
+    
     if [[ $# == 0 ]]; then
         before_show_menu
     fi
@@ -273,15 +384,25 @@ status() {
 }
 
 enable() {
+    echo ""
+    echo -e "${bold}Enabling auto-start...${plain}"
+    print_line "─"
+    
     if [[ x"${release}" == x"alpine" ]]; then
-        rc-update add v2sp
+        rc-update add v2sp >/dev/null 2>&1
     else
-        systemctl enable v2sp
+        systemctl enable v2sp >/dev/null 2>&1
     fi
+    
     if [[ $? == 0 ]]; then
-        echo -e "${green}v2sp 设置开机自启成功${plain}"
+        echo -e "  ${CHECKMARK} Auto-start enabled"
+        print_line "─"
+        echo -e "  ${green}✓ v2sp will start on system boot${plain}"
     else
-        echo -e "${red}v2sp 设置开机自启失败${plain}"
+        echo -e "  ${CROSS} Failed to enable"
+        print_line "─"
+        echo -e "  ${red}✗ Operation failed${plain}"
+        echo -e "  ${INFO} Check system permissions"
     fi
 
     if [[ $# == 0 ]]; then
@@ -290,15 +411,25 @@ enable() {
 }
 
 disable() {
+    echo ""
+    echo -e "${bold}Disabling auto-start...${plain}"
+    print_line "─"
+    
     if [[ x"${release}" == x"alpine" ]]; then
-        rc-update del v2sp
+        rc-update del v2sp >/dev/null 2>&1
     else
-        systemctl disable v2sp
+        systemctl disable v2sp >/dev/null 2>&1
     fi
+    
     if [[ $? == 0 ]]; then
-        echo -e "${green}v2sp 取消开机自启成功${plain}"
+        echo -e "  ${CHECKMARK} Auto-start disabled"
+        print_line "─"
+        echo -e "  ${green}✓ v2sp will not start on boot${plain}"
     else
-        echo -e "${red}v2sp 取消开机自启失败${plain}"
+        echo -e "  ${CROSS} Failed to disable"
+        print_line "─"
+        echo -e "  ${red}✗ Operation failed${plain}"
+        echo -e "  ${INFO} Check system permissions"
     fi
 
     if [[ $# == 0 ]]; then
@@ -401,28 +532,156 @@ check_install() {
     fi
 }
 
+# Get service uptime
+get_uptime() {
+    if [[ -f /usr/local/v2sp/v2sp ]]; then
+        if [[ x"${release}" == x"alpine" ]]; then
+            echo "N/A"
+        else
+            local pid=$(pgrep -f "/usr/local/v2sp/v2sp" 2>/dev/null)
+            if [[ -n "$pid" ]]; then
+                ps -p $pid -o etime= 2>/dev/null | tr -d ' ' || echo "N/A"
+            else
+                echo "N/A"
+            fi
+        fi
+    else
+        echo "N/A"
+    fi
+}
+
+# Get system resource usage
+get_resource_usage() {
+    if command -v free &> /dev/null; then
+        local mem_used=$(free -m 2>/dev/null | awk 'NR==2{printf "%.0f", $3}')
+        local mem_total=$(free -m 2>/dev/null | awk 'NR==2{printf "%.0f", $2}')
+        echo "${mem_used}/${mem_total}MB"
+    else
+        echo "N/A"
+    fi
+}
+
+# Get main network interface
+get_main_interface() {
+    # Try to find the main interface with default route
+    local iface=$(ip route 2>/dev/null | grep '^default' | awk '{print $5}' | head -1)
+    if [[ -z "$iface" ]]; then
+        # Fallback: find first non-loopback interface with traffic
+        iface=$(ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | grep -v '^lo$' | head -1)
+    fi
+    echo "$iface"
+}
+
+# Get network speed (requires 1 second sampling)
+get_network_speed() {
+    local iface=$(get_main_interface)
+    if [[ -z "$iface" ]] || [[ ! -f /proc/net/dev ]]; then
+        echo "N/A"
+        return
+    fi
+    
+    # First sample
+    local rx1=$(cat /proc/net/dev | grep "$iface" | awk '{print $2}')
+    local tx1=$(cat /proc/net/dev | grep "$iface" | awk '{print $10}')
+    
+    if [[ -z "$rx1" ]] || [[ -z "$tx1" ]]; then
+        echo "N/A"
+        return
+    fi
+    
+    # Wait 1 second
+    sleep 1
+    
+    # Second sample
+    local rx2=$(cat /proc/net/dev | grep "$iface" | awk '{print $2}')
+    local tx2=$(cat /proc/net/dev | grep "$iface" | awk '{print $10}')
+    
+    # Calculate speed in bytes per second, convert to bits
+    local rx_bits=$(((rx2 - rx1) * 8))
+    local tx_bits=$(((tx2 - tx1) * 8))
+    
+    # Convert to human readable format (bps/Kbps/Mbps)
+    local rx_display=$(format_bits $rx_bits)
+    local tx_display=$(format_bits $tx_bits)
+    
+    echo "Down ${rx_display} / Up ${tx_display}"
+}
+
+# Format bits to human readable (bps/Kbps/Mbps)
+format_bits() {
+    local bits=$1
+    if [[ $bits -lt 1000 ]]; then
+        echo "${bits}bps"
+    elif [[ $bits -lt 1000000 ]]; then
+        printf "%.1fKbps" "$(echo "scale=1; $bits / 1000" | bc 2>/dev/null || echo "$((bits / 1000))")"
+    else
+        printf "%.2fMbps" "$(echo "scale=2; $bits / 1000000" | bc 2>/dev/null || echo "$((bits / 1000000))")"
+    fi
+}
+
+# Show detailed status
 show_status() {
+    local status_icon="" status_text="" auto_icon="" auto_text=""
+    
     check_status
     case $? in
         0)
-            echo -e "v2sp状态: ${green}已运行${plain}"
-            show_enable_status
+            status_icon="${BULLET}"
+            status_text="${green}Running${plain}"
             ;;
         1)
-            echo -e "v2sp状态: ${yellow}未运行${plain}"
-            show_enable_status
+            status_icon="${WARN}"
+            status_text="${yellow}Stopped${plain}"
             ;;
         2)
-            echo -e "v2sp状态: ${red}未安装${plain}"
+            status_icon="${CROSS}"
+            status_text="${red}Not Installed${plain}"
+            echo ""
+            echo -e "  ${status_icon} Service: ${status_text}"
+            echo ""
+            return
     esac
+    
+    check_enabled
+    if [[ $? == 0 ]]; then
+        auto_icon="${CHECKMARK}"
+        auto_text="${green}Enabled${plain}"
+    else
+        auto_icon="${CROSS}"
+        auto_text="${red}Disabled${plain}"
+    fi
+    
+    local uptime=$(get_uptime)
+    local memory=$(get_resource_usage)
+    
+    echo ""
+    print_line "─"
+    echo -e "  ${status_icon} Service: ${status_text}        ${auto_icon} Auto-start: ${auto_text}"
+    
+    # Show resource info if available
+    if [[ "$uptime" != "N/A" ]] || [[ "$memory" != "N/A" ]]; then
+        echo -e "  ⏱ Uptime: ${uptime}        ⚙ Memory: ${memory}"
+    fi
+    
+    # Show network speed (with loading indicator)
+    echo -ne "  ${dim}Loading network speed...${plain}\r"
+    local net_speed=$(get_network_speed)
+    if [[ "$net_speed" != "N/A" ]]; then
+        echo -e "  >> Network: ${cyan}${net_speed}${plain}                              "
+    else
+        echo -e "                                        \r"
+    fi
+    
+    print_line "─"
+    echo ""
 }
 
 show_enable_status() {
     check_enabled
     if [[ $? == 0 ]]; then
-        echo -e "是否开机自启: ${green}是${plain}"
+        echo -e "  ${CHECKMARK} Auto-start: ${green}Enabled${plain}"
     else
-        echo -e "是否开机自启: ${red}否${plain}"
+        echo -e "  ${CROSS} Auto-start: ${red}Disabled${plain}"
     fi
 }
 
@@ -490,56 +749,80 @@ show_usage() {
 }
 
 show_menu() {
-    echo -e "
-  ${green}v2sp 后端管理脚本，${plain}${red}不适用于docker${plain}
---- https://github.com/nsevo/v2sp ---
-  ${green}0.${plain} 修改配置
-————————————————
-  ${green}1.${plain} 安装 v2sp
-  ${green}2.${plain} 更新 v2sp
-  ${green}3.${plain} 卸载 v2sp
-————————————————
-  ${green}4.${plain} 启动 v2sp
-  ${green}5.${plain} 停止 v2sp
-  ${green}6.${plain} 重启 v2sp
-  ${green}7.${plain} 查看 v2sp 状态
-  ${green}8.${plain} 查看 v2sp 日志
-————————————————
-  ${green}9.${plain} 设置 v2sp 开机自启
-  ${green}10.${plain} 取消 v2sp 开机自启
-————————————————
-  ${green}11.${plain} 一键安装 bbr (最新内核)
-  ${green}12.${plain} 查看 v2sp 版本
-  ${green}13.${plain} 生成 X25519 密钥
-  ${green}14.${plain} 升级 v2sp 维护脚本
-  ${green}15.${plain} 生成 v2sp 配置文件
-  ${green}16.${plain} 放行 VPS 的所有网络端口
-  ${green}17.${plain} 退出脚本
- "
- #后续更新可加入上方字符串中
+    clear
+    
+    # Header
+    echo ""
+    print_center "${bold}${cyan}v2sp Control Center${plain}"
+    print_center "${dim}https://github.com/nsevo/v2sp${plain}"
+    echo ""
+    
+    # Status
     show_status
-    echo && read -rp "请输入选择 [0-17]: " num
-
+    
+    # Quick Actions
+    echo -e "${bold}Quick Actions${plain}"
+    print_line "─"
+    print_columns "  ${bold}[R]${plain} Restart    ${bold}[S]${plain} Stop    ${bold}[E]${plain} Edit Config" "  ${bold}[L]${plain} Logs    ${bold}[U]${plain} Update    ${bold}[H]${plain} Help"
+    echo ""
+    
+    # Main Menu
+    echo -e "${bold}Service Management${plain}"
+    print_line "─"
+    print_columns "  ${green}[1]${plain} Install v2sp" "  ${green}[6]${plain} Start service"
+    print_columns "  ${green}[2]${plain} Update v2sp" "  ${green}[7]${plain} Stop service"
+    print_columns "  ${green}[3]${plain} Uninstall v2sp" "  ${green}[8]${plain} Restart service"
+    print_columns "  ${green}[4]${plain} Show version" "  ${green}[9]${plain} Show status"
+    print_columns "  ${green}[5]${plain} Update script" "  ${green}[10]${plain} View logs"
+    echo ""
+    
+    # Auto-start
+    echo -e "${bold}Auto-start${plain}"
+    print_line "─"
+    print_columns "  ${green}[11]${plain} Enable auto-start" "  ${green}[12]${plain} Disable auto-start"
+    echo ""
+    
+    # System Tools
+    echo -e "${bold}System Tools${plain}"
+    print_line "─"
+    print_columns "  ${green}[15]${plain} Install BBR" "  ${green}[17]${plain} Generate config"
+    print_columns "  ${green}[16]${plain} Generate X25519 key" "  ${green}[18]${plain} Open all ports"
+    echo ""
+    
+    # Other
+    print_line "─"
+    echo -e "  ${green}[0]${plain} Edit configuration    ${red}[Q]${plain} Exit"
+    print_line "─"
+    
+    # Prompt
+    echo ""
+    echo -ne " ${ARROW} Enter choice [0-18] or [R/S/E/L/U/H/Q]: "
+    read -r num
+    
+    # Convert to lowercase
+    num=$(echo "$num" | tr '[:upper:]' '[:lower:]')
+    
     case "${num}" in
-        0) config ;;
+        0|e) config ;;
         1) check_uninstall && install ;;
-        2) check_install && update ;;
+        2|u) check_install && update ;;
         3) check_install && uninstall ;;
-        4) check_install && start ;;
-        5) check_install && stop ;;
-        6) check_install && restart ;;
-        7) check_install && status ;;
-        8) check_install && show_log ;;
-        9) check_install && enable ;;
-        10) check_install && disable ;;
-        11) install_bbr ;;
-        12) check_install && show_v2sp_version ;;
-        13) check_install && generate_x25519_key ;;
-        14) update_shell ;;
-        15) generate_config_file ;;
-        16) open_ports ;;
-        17) exit ;;
-        *) echo -e "${red}请输入正确的数字 [0-16]${plain}" ;;
+        4) check_install && show_v2sp_version ;;
+        5) update_shell ;;
+        6) check_install && start ;;
+        7|s) check_install && stop ;;
+        8|r) check_install && restart ;;
+        9) check_install && status ;;
+        10|l) check_install && show_log ;;
+        11) check_install && enable ;;
+        12) check_install && disable ;;
+        15) install_bbr ;;
+        16) check_install && generate_x25519_key ;;
+        17) generate_config_file ;;
+        18) open_ports ;;
+        h) show_usage && before_show_menu ;;
+        q) exit 0 ;;
+        *) echo -e "\n ${CROSS} ${red}Invalid input${plain}" && sleep 1 ;;
     esac
 }
 
