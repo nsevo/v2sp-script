@@ -368,26 +368,12 @@ EOF
         },
         {
             "outboundTag": "block",
-            "domain": [
-                "regexp:(Subject|HELO|SMTP)",
-                "regexp:(torrent|.torrent|peer_id=|info_hash|get_peers|find_node|BitTorrent|announce_peer|announce.php?passkey=|magnet:)",
-                "regexp:(ed2k|xunlei|sandai|Thunder|XLLiveUD|bt_key)"
-            ]
-        },
-        {
-            "outboundTag": "block",
             "ip": [
                 "127.0.0.1/32",
                 "10.0.0.0/8",
                 "fc00::/7",
                 "fe80::/10",
                 "172.16.0.0/12"
-            ]
-        },
-        {
-            "outboundTag": "block",
-            "protocol": [
-                "bittorrent"
             ]
         },
         {
@@ -433,20 +419,6 @@ EOF
       {
         "ip_is_private": true,
         "outbound": "block"
-      },
-      {
-        "domain_regex": [
-            "(Subject|HELO|SMTP)",
-            "(torrent|.torrent|peer_id=|info_hash|get_peers|find_node|BitTorrent|announce_peer|announce.php?passkey=|magnet:)",
-            "(ed2k|xunlei|sandai|Thunder|XLLiveUD|bt_key)"
-        ],
-        "outbound": "block"
-      },
-      {
-        "outbound": "direct",
-        "network": [
-          "udp","tcp"
-        ]
       }
     ]
   },
@@ -473,11 +445,11 @@ disableUDP: false
 udpIdleTimeout: 60s
 resolver:
   type: system
-acl:
-  inline:
-    - direct(geosite:google)
 masquerade:
-  type: 404
+  type: proxy
+  proxy:
+    url: https://www.bing.com
+    rewriteHost: true
 EOF
     echo -e "${green}v2sp 配置文件生成完成,正在重新启动服务${plain}"
     v2sp restart

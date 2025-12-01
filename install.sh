@@ -11,7 +11,7 @@ warn() { echo -e "${yellow}[WARN]${plain} $1"; }
 error() { echo -e "${red}[ERR ]${plain} $1"; }
 section() { echo -e "\n${blue}── $1 ──${plain}"; }
 
-TOTAL_STEPS=4
+TOTAL_STEPS=5
 CURRENT_STEP=0
 start_step() {
     CURRENT_STEP=$((CURRENT_STEP + 1))
@@ -118,6 +118,76 @@ install_base() {
         pacman -S --noconfirm --needed wget curl unzip tar cron socat >/dev/null 2>&1
         pacman -S --noconfirm --needed ca-certificates wget >/dev/null 2>&1
     fi
+}
+
+create_default_sing_origin() {
+    local dnsstrategy="ipv4_only"
+    if ip -6 addr | grep -q "inet6"; then
+        dnsstrategy="prefer_ipv4"
+    fi
+    cat <<EOF > /etc/v2sp/sing_origin.json
+{
+  "dns": {
+    "servers": [
+      {
+        "tag": "cf",
+        "address": "1.1.1.1"
+      }
+    ],
+    "strategy": "$dnsstrategy"
+  },
+  "outbounds": [
+    {
+      "tag": "direct",
+      "type": "direct",
+      "domain_resolver": {
+        "server": "cf",
+        "strategy": "$dnsstrategy"
+      }
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "ip_is_private": true,
+        "outbound": "block"
+      }
+    ]
+  },
+  "experimental": {
+    "cache_file": {
+      "enabled": true
+    }
+  }
+}
+EOF
+}
+
+create_default_hy2_config() {
+    cat <<'EOF' > /etc/v2sp/hy2config.yaml
+quic:
+  initStreamReceiveWindow: 8388608
+  maxStreamReceiveWindow: 8388608
+  initConnReceiveWindow: 20971520
+  maxConnReceiveWindow: 20971520
+  maxIdleTimeout: 30s
+  maxIncomingStreams: 1024
+  disablePathMTUDiscovery: false
+ignoreClientBandwidth: false
+disableUDP: false
+udpIdleTimeout: 60s
+resolver:
+  type: system
+masquerade:
+  type: proxy
+  proxy:
+    url: https://www.bing.com
+    rewriteHost: true
+EOF
 }
 
 # 0: running, 1: not running, 2: not installed
@@ -274,6 +344,14 @@ EOF
     if [[ ! -f /etc/v2sp/custom_inbound.json ]]; then
         cp custom_inbound.json /etc/v2sp/
     fi
+    if [[ ! -f /etc/v2sp/sing_origin.json ]]; then
+        step_detail "生成默认 sing_origin.json"
+        create_default_sing_origin
+    fi
+    if [[ ! -f /etc/v2sp/hy2config.yaml ]]; then
+        step_detail "生成默认 hy2config.yaml"
+        create_default_hy2_config
+    fi
     step_detail "部署管理脚本 v2sp.sh"
     curl -o /usr/bin/v2sp -Ls https://raw.githubusercontent.com/nsevo/v2sp-script/master/v2sp.sh
     chmod +x /usr/bin/v2sp
@@ -312,6 +390,44 @@ EOF
             generate_config_file
         fi
     fi
+    finish_step
+
+    start_step "核对必备配置文件"
+    local required_templates=(
+        "/etc/v2sp/config.json|主配置|copy:/usr/local/v2sp/config.json"
+        "/etc/v2sp/dns.json|DNS 模板|copy:/usr/local/v2sp/dns.json"
+        "/etc/v2sp/route.json|审计规则|copy:/usr/local/v2sp/route.json"
+        "/etc/v2sp/custom_outbound.json|自定义出站|copy:/usr/local/v2sp/custom_outbound.json"
+        "/etc/v2sp/custom_inbound.json|自定义入站|copy:/usr/local/v2sp/custom_inbound.json"
+        "/etc/v2sp/geoip.dat|GeoIP 数据|copy:/usr/local/v2sp/geoip.dat"
+        "/etc/v2sp/geosite.dat|Geosite 数据|copy:/usr/local/v2sp/geosite.dat"
+        "/etc/v2sp/sing_origin.json|sing-box 原始模板|generate:sing"
+        "/etc/v2sp/hy2config.yaml|Hysteria2 模板|generate:hy2"
+    )
+    for item in "${required_templates[@]}"; do
+        IFS="|" read -r file desc action <<<"$item"
+        if [[ -f $file ]]; then
+            step_detail "[OK] $desc ($file)"
+            continue
+        fi
+        step_detail "[MISS] $desc ($file)，尝试自动创建..."
+        case "$action" in
+            copy:*)
+                cp "${action#copy:}" "$file" 2>/dev/null || true
+                ;;
+            generate:sing)
+                create_default_sing_origin
+                ;;
+            generate:hy2)
+                create_default_hy2_config
+                ;;
+        esac
+        if [[ -f $file ]]; then
+            step_detail "    -> 已补齐 $desc"
+        else
+            warn "$desc ($file) 创建失败，请手动处理"
+        fi
+    done
     finish_step
 }
 
