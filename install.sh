@@ -3,7 +3,26 @@
 red='\033[0;31m'
 green='\033[0;32m'
 yellow='\033[0;33m'
+blue='\033[0;34m'
 plain='\033[0m'
+
+info() { echo -e "${green}[INFO]${plain} $1"; }
+warn() { echo -e "${yellow}[WARN]${plain} $1"; }
+error() { echo -e "${red}[ERR ]${plain} $1"; }
+section() { echo -e "\n${blue}── $1 ──${plain}"; }
+
+TOTAL_STEPS=4
+CURRENT_STEP=0
+start_step() {
+    CURRENT_STEP=$((CURRENT_STEP + 1))
+    echo -e "${blue}[${CURRENT_STEP}/${TOTAL_STEPS}]${plain} $1"
+}
+finish_step() {
+    echo -e "    ${green}✓ 完成${plain}\n"
+}
+step_detail() {
+    echo -e "    ${yellow}•${plain} $1"
+}
 
 cur_dir=$(pwd)
 
@@ -124,6 +143,9 @@ check_status() {
 }
 
 install_v2sp() {
+    local last_version=""
+    local archive="/usr/local/v2sp/v2sp-linux.zip"
+
     if [[ -e /usr/local/v2sp/ ]]; then
         rm -rf /usr/local/v2sp/
     fi
@@ -131,30 +153,34 @@ install_v2sp() {
     mkdir /usr/local/v2sp/ -p
     cd /usr/local/v2sp/
 
+    start_step "获取 v2sp 发行版"
     if  [ $# == 0 ] ;then
+        step_detail "检测最新版本"
         last_version=$(curl -Ls "https://api.github.com/repos/nsevo/v2sp/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
         if [[ ! -n "$last_version" ]]; then
-            echo -e "${red}检测 v2sp 版本失败，可能是超出 Github API 限制，请稍后再试，或手动指定 v2sp 版本安装${plain}"
+            error "检测 v2sp 版本失败，可能是超出 Github API 限制，请稍后再试，或手动指定 v2sp 版本安装"
             exit 1
         fi
-        echo -e "检测到 v2sp 最新版本：${last_version}，开始安装"
-        wget --no-check-certificate -N --progress=bar -O /usr/local/v2sp/v2sp-linux.zip https://github.com/nsevo/v2sp/releases/download/${last_version}/v2sp-linux-${arch}.zip
+        step_detail "下载 v2sp ${last_version}"
+        wget --no-check-certificate -N --progress=bar -O "${archive}" "https://github.com/nsevo/v2sp/releases/download/${last_version}/v2sp-linux-${arch}.zip"
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}下载 v2sp 失败，请确保你的服务器能够下载 Github 的文件${plain}"
+            error "下载 v2sp 失败，请确保你的服务器能够下载 Github 的文件"
             exit 1
         fi
     else
         last_version=$1
-        url="https://github.com/nsevo/v2sp/releases/download/${last_version}/v2sp-linux-${arch}.zip"
-        echo -e "开始安装 v2sp $1"
-        wget --no-check-certificate -N --progress=bar -O /usr/local/v2sp/v2sp-linux.zip ${url}
+        step_detail "下载 v2sp ${last_version}"
+        wget --no-check-certificate -N --progress=bar -O "${archive}" "https://github.com/nsevo/v2sp/releases/download/${last_version}/v2sp-linux-${arch}.zip"
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}下载 v2sp $1 失败，请确保此版本存在${plain}"
+            error "下载 v2sp $1 失败，请确保此版本存在"
             exit 1
         fi
     fi
+    finish_step
 
-    unzip v2sp-linux.zip
+    start_step "安装核心与系统服务"
+    step_detail "解压二进制并写入 /usr/local/v2sp"
+    unzip v2sp-linux.zip >/dev/null
     rm v2sp-linux.zip -f
     chmod +x v2sp
     mkdir /etc/v2sp/ -p
@@ -211,7 +237,9 @@ EOF
         systemctl enable v2sp
         echo -e "${green}v2sp ${last_version}${plain} 安装完成，已设置开机自启"
     fi
+    finish_step
 
+    start_step "配置默认文件与管理脚本"
     if [[ ! -f /etc/v2sp/config.json ]]; then
         cp config.json /etc/v2sp/
         echo -e ""
@@ -246,6 +274,7 @@ EOF
     if [[ ! -f /etc/v2sp/custom_inbound.json ]]; then
         cp custom_inbound.json /etc/v2sp/
     fi
+    step_detail "部署管理脚本 v2sp.sh"
     curl -o /usr/bin/v2sp -Ls https://raw.githubusercontent.com/nsevo/v2sp-script/master/v2sp.sh
     chmod +x /usr/bin/v2sp
     if [ ! -L /usr/bin/v2spctl ]; then
@@ -283,8 +312,11 @@ EOF
             generate_config_file
         fi
     fi
+    finish_step
 }
 
-echo -e "${green}开始安装${plain}"
+section "v2sp 安装流程"
+start_step "准备运行环境"
 install_base
+finish_step
 install_v2sp $1
