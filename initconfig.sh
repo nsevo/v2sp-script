@@ -30,18 +30,18 @@ select_node_type() {
     fi
 
     while true; do
-        echo -e "${yellow}请选择节点传输协议：${plain}"
+        echo -e "${yellow}请选择节点传输协议：${plain}" >&2
         for idx in "${!options[@]}"; do
             local key=${options[$idx]}
             local label=${NODE_TYPE_LABELS[$key]}
-            printf "  %d. %s\n" $((idx + 1)) "$label"
+            printf "  %d. %s\n" $((idx + 1)) "$label" >&2
         done
         read -rp "请输入：" choice
         if [[ $choice =~ ^[1-9][0-9]*$ ]] && (( choice >= 1 && choice <= ${#options[@]} )); then
             echo "${options[$((choice - 1))]}"
             return
         fi
-        echo -e "${red}无效选择，请重新输入。${plain}"
+        echo -e "${red}无效选择，请重新输入。${plain}" >&2
     done
 }
 
