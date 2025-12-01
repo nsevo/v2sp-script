@@ -28,8 +28,12 @@ print_line() {
 print_center() {
     local text="$1"
     local width=$(get_term_width)
-    local padding=$(( (width - ${#text}) / 2 ))
-    printf "%${padding}s%s\n" "" "$text"
+    # Strip ANSI codes for length calculation
+    local clean_text=$(echo -e "$text" | sed 's/\x1b\[[0-9;]*m//g')
+    local text_len=${#clean_text}
+    local padding=$(( (width - text_len) / 2 ))
+    printf "%${padding}s" ""
+    echo -e "$text"
 }
 
 # Print two columns
@@ -589,4 +593,5 @@ if [[ $# > 0 ]]; then
 else
     show_menu
 fi
+
 

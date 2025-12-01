@@ -1,222 +1,213 @@
 #!/bin/bash
-# 一键配置
 
-# 协议映射（仅支持 Xray）
-declare -A NODE_TYPE_LABELS=(
-    ["shadowsocks"]="Shadowsocks"
-    ["vless"]="VLESS"
-    ["vmess"]="VMess"
-    ["trojan"]="Trojan"
-    ["hysteria"]="Hysteria"
-)
+# Colors
+red='\033[0;31m'
+green='\033[0;32m'
+yellow='\033[0;33m'
+cyan='\033[0;36m'
+bold='\033[1m'
+plain='\033[0m'
 
-declare -A CORE_PROTOCOL_MATRIX=(
-    ["xray"]="shadowsocks vless vmess trojan hysteria"
-)
+# Supported protocols
+PROTOCOLS="vless vmess trojan shadowsocks hysteria"
 
-select_node_type() {
-    local core=$1
-    local options_string="${CORE_PROTOCOL_MATRIX[$core]}"
-    read -r -a options <<< "$options_string"
-
-    if [[ ${#options[@]} -eq 1 ]]; then
-        echo "${options[0]}"
-        return
-    fi
-
-    while true; do
-        echo -e "${yellow}请选择节点传输协议：${plain}" >&2
-        for idx in "${!options[@]}"; do
-            local key=${options[$idx]}
-            local label=${NODE_TYPE_LABELS[$key]}
-            printf "  %d. %s\n" $((idx + 1)) "$label" >&2
-        done
-        read -rp "请输入：" choice
-        if [[ $choice =~ ^[1-9][0-9]*$ ]] && (( choice >= 1 && choice <= ${#options[@]} )); then
-            echo "${options[$((choice - 1))]}"
-            return
-        fi
-        echo -e "${red}无效选择，请重新输入。${plain}" >&2
-    done
+print_usage() {
+    echo ""
+    echo -e "${bold}Usage:${plain}"
+    echo -e "  Enter: ${cyan}URL KEY PROTOCOL:ID [PROTOCOL:ID ...]${plain}"
+    echo ""
+    echo -e "${bold}Examples:${plain}"
+    echo -e "  ${green}https://api.example.com/v2sp_api.php mykey123 vless:209${plain}"
+    echo -e "  ${green}https://api.example.com/v2sp_api.php mykey123 vless:209 vmess:210${plain}"
+    echo -e "  ${green}https://api.example.com/v2sp_api.php mykey123 vless:209 trojan:211 shadowsocks:212${plain}"
+    echo ""
+    echo -e "${bold}Supported protocols:${plain} ${PROTOCOLS}"
+    echo ""
 }
 
-# 检查系统是否有 IPv6 地址
-check_ipv6_support() {
-    if ip -6 addr | grep -q "inet6"; then
-        echo "1"  # 支持 IPv6
-    else
-        echo "0"  # 不支持 IPv6
-    fi
+validate_protocol() {
+    local proto=$1
+    for p in $PROTOCOLS; do
+        [[ "$proto" == "$p" ]] && return 0
+    done
+    return 1
 }
 
-add_node_config() {
-    # 固定使用 xray 内核
-        core="xray"
-        core_xray=true
-    echo -e "${green}使用 Xray 内核${plain}"
-    while true; do
-        read -rp "请输入节点Node ID：" NodeID
-        # 判断NodeID是否为正整数
-        if [[ "$NodeID" =~ ^[0-9]+$ ]]; then
-            break  # 输入正确，退出循环
-        else
-            echo "错误：请输入正确的数字作为Node ID。"
-        fi
-    done
-
-    NodeType=$(select_node_type "$core")
-    fastopen=true
-    isreality="n"
-    istls="n"
-    if [ "$NodeType" == "vless" ]; then
-        read -rp "请选择是否为reality节点？(y/n)" isreality
-    elif [ "$NodeType" == "hysteria" ]; then
-        fastopen=false
-        istls="y"
+parse_node() {
+    local node=$1
+    local proto="${node%%:*}"
+    local id="${node##*:}"
+    
+    # Validate format
+    if [[ ! "$node" =~ ^[a-z]+:[0-9]+$ ]]; then
+        echo -e "${red}Invalid format: $node (expected PROTOCOL:ID)${plain}" >&2
+        return 1
     fi
-
-    if [[ "$isreality" != "y" && "$isreality" != "Y" &&  "$istls" != "y" ]]; then
-        read -rp "请选择是否进行TLS配置？(y/n)" istls
+    
+    # Validate protocol
+    if ! validate_protocol "$proto"; then
+        echo -e "${red}Unknown protocol: $proto${plain}" >&2
+        echo -e "Supported: ${PROTOCOLS}" >&2
+        return 1
     fi
-
-    certmode="none"
-    certdomain="example.com"
-    if [[ "$isreality" != "y" && "$isreality" != "Y" && ( "$istls" == "y" || "$istls" == "Y" ) ]]; then
-        echo -e "${yellow}请选择证书申请模式：${plain}"
-        echo -e "${green}1. http模式自动申请，节点域名已正确解析${plain}"
-        echo -e "${green}2. dns模式自动申请，需填入正确域名服务商API参数${plain}"
-        echo -e "${green}3. self模式，自签证书或提供已有证书文件${plain}"
-        read -rp "请输入：" certmode
-        case "$certmode" in
-            1 ) certmode="http" ;;
-            2 ) certmode="dns" ;;
-            3 ) certmode="self" ;;
-        esac
-        read -rp "请输入节点证书域名(example.com)：" certdomain
-        if [ "$certmode" != "http" ]; then
-            echo -e "${red}请手动修改配置文件后重启 v2sp！${plain}"
-        fi
+    
+    # Validate ID
+    if [[ ! "$id" =~ ^[0-9]+$ ]] || [[ "$id" -eq 0 ]]; then
+        echo -e "${red}Invalid node ID: $id${plain}" >&2
+        return 1
     fi
-    # 生成 Xray 节点配置（Core 字段可省略，自动默认为 xray）
-    node_config=$(cat <<EOF
-{
-            "ApiHost": "$ApiHost",
-            "ApiKey": "$ApiKey",
-            "NodeID": $NodeID,
-            "NodeType": "$NodeType",
+    
+    echo "$proto:$id"
+    return 0
+}
+
+generate_node_json() {
+    local url=$1
+    local key=$2
+    local proto=$3
+    local id=$4
+    
+    cat <<EOF
+        {
+            "ApiHost": "$url",
+            "ApiKey": "$key",
+            "NodeID": $id,
+            "NodeType": "$proto",
             "Timeout": 30,
             "ListenIP": "0.0.0.0",
             "SendIP": "0.0.0.0",
             "DeviceOnlineMinTraffic": 200,
-            "MinReportTraffic": 0,
             "EnableProxyProtocol": false,
             "EnableUot": true,
             "EnableTFO": true,
-            "DNSType": "UseIPv4",
-            "CertConfig": {
-                "CertMode": "$certmode",
-                "RejectUnknownSni": false,
-                "CertDomain": "$certdomain",
-                "CertFile": "/etc/v2sp/fullchain.cer",
-                "KeyFile": "/etc/v2sp/cert.key",
-                "Email": "noreply@v2sp.com",
-                "Provider": "cloudflare",
-                "DNSEnv": {
-                    "EnvName": "env1"
-                }
-            }
-        },
+            "DNSType": "UseIPv4"
+        }
 EOF
-)
-    nodes_config+=("$node_config")
 }
 
 generate_config_file() {
-    echo -e "${yellow}v2sp 配置文件生成向导${plain}"
-    echo -e "${red}请阅读以下注意事项：${plain}"
-    echo -e "${red}1. 目前该功能正处测试阶段${plain}"
-    echo -e "${red}2. 生成的配置文件会保存到 /etc/v2sp/config.json${plain}"
-    echo -e "${red}3. 原来的配置文件会保存到 /etc/v2sp/config.json.bak${plain}"
-    echo -e "${red}4. 目前仅部分支持TLS${plain}"
-    echo -e "${red}5. 使用此功能生成的配置文件会自带审计，确定继续？(y/n)${plain}"
-    read -rp "请输入：" continue_prompt
-    if [[ "$continue_prompt" =~ ^[Nn][Oo]? ]]; then
-        exit 0
+    echo ""
+    echo -e "${bold}${cyan}v2sp Config Generator${plain}"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    print_usage
+    
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -ne "${cyan}>${plain} "
+    read -r input
+    
+    # Check empty input
+    if [[ -z "$input" ]]; then
+        echo -e "${red}No input provided${plain}"
+        return 1
     fi
     
-    nodes_config=()
-    first_node=true
-    core_xray=true
-    fixed_api_info=false
-    check_api=false
+    # Parse input
+    read -ra parts <<< "$input"
     
-    while true; do
-        if [ "$first_node" = true ]; then
-            read -rp "请输入面板 API 地址(https://example.com)：" ApiHost
-            read -rp "请输入节点接入密钥(API Key)：" ApiKey
-            read -rp "是否固定以上面板信息用于后续节点？(y/n)" fixed_api
-            if [ "$fixed_api" = "y" ] || [ "$fixed_api" = "Y" ]; then
-                fixed_api_info=true
-                echo -e "${red}成功固定地址${plain}"
-            fi
-            first_node=false
-            add_node_config
+    if [[ ${#parts[@]} -lt 3 ]]; then
+        echo -e "${red}Invalid input. Need at least: URL KEY PROTOCOL:ID${plain}"
+        return 1
+    fi
+    
+    local url="${parts[0]}"
+    local key="${parts[1]}"
+    local nodes=("${parts[@]:2}")
+    
+    # Validate URL
+    if [[ ! "$url" =~ ^https?:// ]]; then
+        echo -e "${red}Invalid URL: $url${plain}"
+        return 1
+    fi
+    
+    # Validate and parse nodes
+    local valid_nodes=()
+    for node in "${nodes[@]}"; do
+        local parsed
+        parsed=$(parse_node "$node")
+        if [[ $? -eq 0 ]]; then
+            valid_nodes+=("$parsed")
         else
-            read -rp "是否继续添加节点配置？(输入y继续，直接回车退出) [y/N] " continue_adding_node
-            if [[ ! "$continue_adding_node" =~ ^[Yy]$ ]]; then
-                break
-            elif [ "$fixed_api_info" = false ]; then
-                read -rp "请输入面板 API 地址(https://example.com)：" ApiHost
-                read -rp "请输入节点接入密钥(API Key)：" ApiKey
-            fi
-            add_node_config
+            return 1
         fi
     done
-
-    # 初始化核心配置数组
-    cores_config="["
-
-    # 检查并添加xray核心配置
-    if [ "$core_xray" = true ]; then
-        cores_config+="
-    {
-        \"Type\": \"xray\",
-        \"Log\": {
-            \"Level\": \"error\",
-            \"ErrorPath\": \"/etc/v2sp/error.log\"
-        },
-        \"OutboundConfigPath\": \"/etc/v2sp/custom_outbound.json\",
-        \"RouteConfigPath\": \"/etc/v2sp/route.json\"
-    },"
-    fi
-
-
-    # 移除最后一个逗号并关闭数组
-    cores_config+="]"
-    cores_config=$(echo "$cores_config" | sed 's/},]$/}]/')
-
-    # 切换到配置文件目录
-    cd /etc/v2sp
     
-    # 备份旧的配置文件
-    mv config.json config.json.bak
-    nodes_config_str="${nodes_config[*]}"
-    formatted_nodes_config="${nodes_config_str%,}"
-
-    # 创建 config.json 文件
-    cat <<EOF > /etc/v2sp/config.json
+    if [[ ${#valid_nodes[@]} -eq 0 ]]; then
+        echo -e "${red}No valid nodes${plain}"
+        return 1
+    fi
+    
+    echo ""
+    echo -e "${bold}Configuration:${plain}"
+    echo -e "  URL: ${green}$url${plain}"
+    echo -e "  Key: ${green}$key${plain}"
+    echo -e "  Nodes:"
+    for node in "${valid_nodes[@]}"; do
+        local proto="${node%%:*}"
+        local id="${node##*:}"
+        echo -e "    - ${cyan}$proto${plain} (ID: ${green}$id${plain})"
+    done
+    echo ""
+    
+    # Confirm
+    echo -ne "Generate config? [Y/n]: "
+    read -r confirm
+    if [[ "$confirm" =~ ^[Nn] ]]; then
+        echo -e "${yellow}Cancelled${plain}"
+        return 0
+    fi
+    
+    # Backup existing config
+    if [[ -f /etc/v2sp/config.json ]]; then
+        cp /etc/v2sp/config.json /etc/v2sp/config.json.bak
+        echo -e "  ${green}[+]${plain} Backed up existing config"
+    fi
+    
+    # Generate nodes JSON
+    local nodes_json=""
+    local first=true
+    for node in "${valid_nodes[@]}"; do
+        local proto="${node%%:*}"
+        local id="${node##*:}"
+        
+        if [[ "$first" == true ]]; then
+            first=false
+        else
+            nodes_json+=","
+        fi
+        nodes_json+=$'\n'
+        nodes_json+=$(generate_node_json "$url" "$key" "$proto" "$id")
+    done
+    
+    # Create config directory
+    mkdir -p /etc/v2sp
+    
+    # Generate config.json
+    cat > /etc/v2sp/config.json <<EOF
 {
     "Log": {
         "Level": "error",
         "Output": ""
     },
-    "Cores": $cores_config,
-    "Nodes": [$formatted_nodes_config]
+    "Cores": [
+        {
+            "Type": "xray",
+            "Log": {
+                "Level": "error",
+                "ErrorPath": "/etc/v2sp/error.log"
+            },
+            "OutboundConfigPath": "/etc/v2sp/custom_outbound.json",
+            "RouteConfigPath": "/etc/v2sp/route.json"
+        }
+    ],
+    "Nodes": [${nodes_json}
+    ]
 }
 EOF
+    echo -e "  ${green}[+]${plain} Generated /etc/v2sp/config.json"
     
-    # 创建 custom_outbound.json 文件
-    cat <<EOF > /etc/v2sp/custom_outbound.json
+    # Generate custom_outbound.json
+    cat > /etc/v2sp/custom_outbound.json <<'EOF'
 [
     {
         "tag": "IPv4_out",
@@ -238,9 +229,10 @@ EOF
     }
 ]
 EOF
+    echo -e "  ${green}[+]${plain} Generated /etc/v2sp/custom_outbound.json"
     
-    # 创建 route.json 文件
-    cat <<EOF > /etc/v2sp/route.json
+    # Generate route.json
+    cat > /etc/v2sp/route.json <<'EOF'
 {
     "domainStrategy": "AsIs",
     "rules": [
@@ -267,6 +259,20 @@ EOF
     ]
 }
 EOF
-    echo -e "${green}v2sp 配置文件生成完成,正在重新启动服务${plain}"
-    v2sp restart
+    echo -e "  ${green}[+]${plain} Generated /etc/v2sp/route.json"
+    
+    echo ""
+    echo -e "${green}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${plain}"
+    echo -e "  ${bold}Config generated successfully${plain}"
+    echo -e "${green}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${plain}"
+    echo ""
+    
+    # Restart service
+    if command -v v2sp &> /dev/null; then
+        echo -ne "Restart v2sp now? [Y/n]: "
+        read -r restart_confirm
+        if [[ ! "$restart_confirm" =~ ^[Nn] ]]; then
+            v2sp restart
+        fi
+    fi
 }

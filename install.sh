@@ -106,16 +106,16 @@ install_base() {
     case "${release}" in
         centos)
             yum install -y -q epel-release wget curl unzip tar socat ca-certificates >/dev/null 2>&1
-            update-ca-trust force-enable >/dev/null 2>&1
+        update-ca-trust force-enable >/dev/null 2>&1
             ;;
         alpine)
             apk add --quiet wget curl unzip tar socat ca-certificates >/dev/null 2>&1
-            update-ca-certificates >/dev/null 2>&1
+        update-ca-certificates >/dev/null 2>&1
             ;;
         debian|ubuntu)
             apt-get update -qq >/dev/null 2>&1
             apt-get install -qq -y wget curl unzip tar cron socat ca-certificates >/dev/null 2>&1
-            update-ca-certificates >/dev/null 2>&1
+        update-ca-certificates >/dev/null 2>&1
             ;;
         arch)
             pacman -Sy --noconfirm --quiet >/dev/null 2>&1
@@ -139,12 +139,12 @@ check_status() {
 install_v2sp() {
     local last_version=""
     local archive="/usr/local/v2sp/v2sp-linux.zip"
-    
+
     # Clean old installation
     [[ -e /usr/local/v2sp/ ]] && rm -rf /usr/local/v2sp/
     mkdir -p /usr/local/v2sp/
     cd /usr/local/v2sp/
-    
+
     # Step 1: Download
     step_start "Fetching v2sp"
     if [ $# == 0 ]; then
@@ -163,10 +163,10 @@ install_v2sp() {
             progress_bar ${percent%\%} 100
         done
     
-    if [[ $? -ne 0 ]]; then
+        if [[ $? -ne 0 ]]; then
         step_fail "Download v2sp ${last_version}" "Network error or invalid version"
-        exit 1
-    fi
+            exit 1
+        fi
     step_ok "Downloaded v2sp ${last_version}"
     
     # Step 2: Extract and install
@@ -190,7 +190,7 @@ command_user="root"
 pidfile="/run/v2sp.pid"
 command_background="yes"
 depend() {
-    need net
+        need net
 }
 EOF
         chmod +x /etc/init.d/v2sp
@@ -257,7 +257,7 @@ EOF
     if [[ $? -ne 0 ]]; then
         step_fail "Script download failed"
     else
-        chmod +x /usr/bin/v2sp
+    chmod +x /usr/bin/v2sp
         [[ ! -L /usr/bin/v2spctl ]] && ln -s /usr/bin/v2sp /usr/bin/v2spctl && chmod +x /usr/bin/v2spctl
         step_ok "Management script installed"
     fi
