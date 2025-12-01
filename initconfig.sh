@@ -38,7 +38,12 @@ generate_node_json() {
             "EnableProxyProtocol": false,
             "EnableUot": true,
             "EnableTFO": true,
-            "DNSType": "UseIPv4"
+            "DNSType": "UseIPv4",
+            "CertConfig": {
+                "CertMode": "file",
+                "CertFile": "/etc/v2sp/fullchain.cer",
+                "KeyFile": "/etc/v2sp/cert.key"
+            }
         }
 EOF
 }
