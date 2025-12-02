@@ -10,21 +10,72 @@ plain='\033[0m'
 
 print_usage() {
     echo ""
-    echo -e "${bold}Usage:${plain}"
-    echo -e "  Enter: ${cyan}URL KEY NODE_ID [NODE_ID ...]${plain}"
+    echo -e "${bold}Input format:${plain}"
+    echo -e "  ${cyan}URL KEY NODE_ID [NODE_ID ...]${plain}"
     echo ""
     echo -e "${bold}Examples:${plain}"
     echo -e "  ${green}https://example.com/v2sp_api.php mykey123 209${plain}"
     echo -e "  ${green}https://example.com/v2sp_api.php mykey123 209 210 211${plain}"
     echo ""
-    echo -e "${bold}Note:${plain} Protocol type is auto-detected from panel database"
+}
+
+select_cert_mode() {
     echo ""
+    echo -e "${bold}SSL Certificate Mode:${plain}"
+    echo -e "  ${green}1${plain}) none  - No TLS (for Reality or plain)"
+    echo -e "  ${green}2${plain}) file  - Use existing certificate files"
+    echo -e "  ${green}3${plain}) http  - Auto-apply via HTTP (port 80 required)"
+    echo -e "  ${green}4${plain}) dns   - Auto-apply via DNS (Cloudflare, etc.)"
+    echo ""
+    echo -ne "Select [1-4, default: 2]: "
+    read -r cert_choice
+    
+    case "$cert_choice" in
+        1) echo "none" ;;
+        3) echo "http" ;;
+        4) echo "dns" ;;
+        *) echo "file" ;;
+    esac
 }
 
 generate_node_json() {
     local url=$1
     local key=$2
     local id=$3
+    local cert_mode=$4
+    local cert_domain=$5
+    
+    # Build CertConfig based on mode
+    local cert_config=""
+    case "$cert_mode" in
+        none)
+            cert_config='"CertConfig": { "CertMode": "none" }'
+            ;;
+        file)
+            cert_config='"CertConfig": {
+                "CertMode": "file",
+                "CertDomain": "'"$cert_domain"'",
+                "CertFile": "/etc/v2sp/fullchain.cer",
+                "KeyFile": "/etc/v2sp/cert.key"
+            }'
+            ;;
+        http)
+            cert_config='"CertConfig": {
+                "CertMode": "http",
+                "CertDomain": "'"$cert_domain"'"
+            }'
+            ;;
+        dns)
+            cert_config='"CertConfig": {
+                "CertMode": "dns",
+                "CertDomain": "'"$cert_domain"'",
+                "Provider": "cloudflare",
+                "DNSEnv": {
+                    "CF_DNS_API_TOKEN": "YOUR_CLOUDFLARE_TOKEN"
+                }
+            }'
+            ;;
+    esac
     
     cat <<EOF
 {
@@ -39,12 +90,8 @@ generate_node_json() {
             "EnableUot": true,
             "EnableTFO": true,
             "DNSType": "UseIPv4",
-            "CertConfig": {
-                "CertMode": "file",
-                "CertFile": "/etc/v2sp/fullchain.cer",
-                "KeyFile": "/etc/v2sp/cert.key"
-                }
-            }
+            $cert_config
+        }
 EOF
 }
 
@@ -99,11 +146,29 @@ generate_config_file() {
         return 1
     fi
     
+    # Select certificate mode
+    local cert_mode=""
+    cert_mode=$(select_cert_mode)
+    
+    # Get domain for TLS modes
+    local cert_domain=""
+    if [[ "$cert_mode" != "none" ]]; then
+        echo ""
+        echo -ne "Enter domain (e.g. node1.example.com): "
+        read -r cert_domain
+        if [[ -z "$cert_domain" ]]; then
+            echo -e "${red}Domain is required for TLS${plain}"
+            return 1
+        fi
+    fi
+    
     echo ""
     echo -e "${bold}Configuration:${plain}"
     echo -e "  URL: ${green}$url${plain}"
     echo -e "  Key: ${green}$key${plain}"
     echo -e "  Nodes: ${cyan}${valid_ids[*]}${plain}"
+    echo -e "  SSL Mode: ${cyan}$cert_mode${plain}"
+    [[ -n "$cert_domain" ]] && echo -e "  Domain: ${cyan}$cert_domain${plain}"
     echo ""
     
     # Confirm
@@ -130,7 +195,7 @@ generate_config_file() {
             nodes_json+=","
         fi
         nodes_json+=$'\n'
-        nodes_json+=$(generate_node_json "$url" "$key" "$id")
+        nodes_json+=$(generate_node_json "$url" "$key" "$id" "$cert_mode" "$cert_domain")
     done
     
     # Create config directory
@@ -152,6 +217,15 @@ generate_config_file() {
             },
             "OutboundConfigPath": "/etc/v2sp/custom_outbound.json",
             "RouteConfigPath": "/etc/v2sp/route.json"
+        },
+        {
+            "Type": "hysteria2",
+            "Log": {
+                "Level": "error",
+                "ErrorPath": "/etc/v2sp/hy2_error.log"
+            },
+            "BinaryPath": "/usr/local/bin/hysteria",
+            "ConfigDir": "/etc/v2sp/hy2"
         }
     ],
     "Nodes": [${nodes_json}

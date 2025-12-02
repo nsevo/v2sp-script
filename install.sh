@@ -140,6 +140,56 @@ install_hysteria2() {
     fi
 }
 
+# Create default config.json
+create_default_config() {
+    cat > /etc/v2sp/config.json <<'EOF'
+{
+    "Log": {
+        "Level": "error",
+        "Output": ""
+    },
+    "Cores": [
+        {
+            "Type": "xray",
+            "Log": {
+                "Level": "error",
+                "ErrorPath": "/etc/v2sp/error.log"
+            },
+            "AssetPath": "/etc/v2sp/",
+            "OutboundConfigPath": "/etc/v2sp/custom_outbound.json",
+            "RouteConfigPath": "/etc/v2sp/route.json"
+        },
+        {
+            "Type": "hysteria2",
+            "Log": {
+                "Level": "error",
+                "ErrorPath": "/etc/v2sp/hy2_error.log"
+            },
+            "BinaryPath": "/usr/local/bin/hysteria",
+            "ConfigDir": "/etc/v2sp/hy2"
+        }
+    ],
+    "Nodes": [
+        {
+            "ApiHost": "https://your-panel.com/api",
+            "ApiKey": "your-api-key",
+            "NodeID": 1,
+            "Timeout": 30,
+            "ListenIP": "0.0.0.0",
+            "SendIP": "0.0.0.0",
+            "DeviceOnlineMinTraffic": 200,
+            "CertConfig": {
+                "CertMode": "file",
+                "CertDomain": "your-domain.com",
+                "CertFile": "/etc/v2sp/fullchain.cer",
+                "KeyFile": "/etc/v2sp/cert.key"
+            }
+        }
+    ]
+}
+EOF
+}
+
 install_base() {
     case "${release}" in
         centos)
@@ -266,8 +316,9 @@ EOF
     step_start "Configuring files"
     local first_install=false
     if [[ ! -f /etc/v2sp/config.json ]]; then
-        cp config.json /etc/v2sp/ 2>/dev/null
+        create_default_config
         first_install=true
+        step_ok "Created default config.json (edit before starting)"
     else
         # Restart existing installation
         if [[ x"${release}" == x"alpine" ]]; then
@@ -279,15 +330,10 @@ EOF
         check_status
         if [[ $? != 0 ]]; then
             step_warn "Service may have failed, check: v2sp log"
+        else
+            step_ok "Config exists, service restarted"
         fi
     fi
-    
-    # Copy default configs
-    [[ ! -f /etc/v2sp/dns.json ]] && cp dns.json /etc/v2sp/ 2>/dev/null
-    [[ ! -f /etc/v2sp/route.json ]] && cp route.json /etc/v2sp/ 2>/dev/null
-    [[ ! -f /etc/v2sp/custom_outbound.json ]] && cp custom_outbound.json /etc/v2sp/ 2>/dev/null
-    [[ ! -f /etc/v2sp/custom_inbound.json ]] && cp custom_inbound.json /etc/v2sp/ 2>/dev/null
-    step_ok "Config files ready"
     
     # Step 4: Management script
     step_start "Installing management script"
@@ -310,8 +356,6 @@ EOF
     local missing=0
     local files=(
         "/etc/v2sp/config.json"
-        "/etc/v2sp/dns.json"
-        "/etc/v2sp/route.json"
         "/etc/v2sp/geoip.dat"
         "/etc/v2sp/geosite.dat"
     )
