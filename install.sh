@@ -100,7 +100,7 @@ elif [[ x"${release}" == x"ubuntu" && ${os_version} -lt 16 ]]; then
     echo -e "${red}Ubuntu 16+ required${plain}" && exit 1
 elif [[ x"${release}" == x"debian" && ${os_version} -lt 8 ]]; then
     echo -e "${red}Debian 8+ required${plain}" && exit 1
-fi
+    fi
 
 install_hysteria2() {
     # Check if already installed
@@ -144,16 +144,16 @@ install_base() {
     case "${release}" in
         centos)
             yum install -y -q epel-release wget curl unzip tar socat ca-certificates >/dev/null 2>&1
-        update-ca-trust force-enable >/dev/null 2>&1
+            update-ca-trust force-enable >/dev/null 2>&1
             ;;
         alpine)
             apk add --quiet wget curl unzip tar socat ca-certificates >/dev/null 2>&1
-        update-ca-certificates >/dev/null 2>&1
+            update-ca-certificates >/dev/null 2>&1
             ;;
         debian|ubuntu)
             apt-get update -qq >/dev/null 2>&1
             apt-get install -qq -y wget curl unzip tar cron socat ca-certificates >/dev/null 2>&1
-        update-ca-certificates >/dev/null 2>&1
+            update-ca-certificates >/dev/null 2>&1
             ;;
         arch)
             pacman -Sy --noconfirm --quiet >/dev/null 2>&1
@@ -295,7 +295,7 @@ EOF
     if [[ $? -ne 0 ]]; then
         step_fail "Script download failed"
     else
-    chmod +x /usr/bin/v2sp
+        chmod +x /usr/bin/v2sp
         [[ ! -L /usr/bin/v2spctl ]] && ln -s /usr/bin/v2sp /usr/bin/v2spctl && chmod +x /usr/bin/v2spctl
         step_ok "Management script installed"
     fi

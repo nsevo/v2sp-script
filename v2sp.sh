@@ -460,6 +460,20 @@ open_ports() {
     echo -e "${green}Firewall ports opened${plain}"
 }
 
+clean_log() {
+    echo ""
+    echo -e "${bold}Clearing logs...${plain}"
+    if /usr/local/v2sp/v2sp log clean >/dev/null 2>&1; then
+        echo -e "${green}Logs cleared${plain}"
+    else
+        journalctl -u v2sp --rotate >/dev/null 2>&1
+        journalctl -u v2sp --vacuum-time=1s >/dev/null 2>&1
+        : >/etc/v2sp/error.log 2>/dev/null
+        echo -e "${yellow}Fallback cleanup completed${plain}"
+    fi
+    [[ $# == 0 ]] && before_show_menu
+}
+
 show_usage() {
     echo "v2sp management script usage:"
     echo "-----------------------------------"
@@ -477,6 +491,7 @@ show_usage() {
     echo "v2sp version      - Show version"
     echo "v2sp x25519       - Generate key"
     echo "v2sp generate     - Generate config"
+    echo "v2sp log clean    - Clear logs"
     echo "-----------------------------------"
 }
 
@@ -512,6 +527,7 @@ show_menu() {
     print_columns "  ${green}[10]${plain} Update v2sp" "  ${green}[13]${plain} Uninstall v2sp"
     print_columns "  ${green}[11]${plain} Update script" "  ${green}[14]${plain} Install BBR"
     print_columns "  ${green}[12]${plain} Show version" "  ${green}[15]${plain} Open all ports"
+    print_columns "  ${green}[16]${plain} Clear logs" ""
     
     # Check if not installed, show install option
     check_status
@@ -546,6 +562,7 @@ show_menu() {
         13) check_install && uninstall ;;
         14) install_bbr ;;
         15) open_ports && before_show_menu ;;
+        16) clean_log ;;
         l) check_install && show_log ;;
         h) show_usage && before_show_menu ;;
         q) exit 0 ;;
@@ -564,7 +581,13 @@ if [[ $# > 0 ]]; then
         "status") check_install 0 && status 0 ;;
         "enable") check_install 0 && enable 0 ;;
         "disable") check_install 0 && disable 0 ;;
-        "log") check_install 0 && show_log 0 ;;
+        "log")
+            if [[ "$2" == "clean" ]]; then
+                clean_log 0
+            else
+                check_install 0 && show_log 0
+            fi
+            ;;
         "update") check_install 0 && update 0 $2 ;;
         "config") config $* ;;
         "generate") generate_config_file ;;
