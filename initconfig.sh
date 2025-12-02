@@ -27,7 +27,7 @@ generate_node_json() {
     local id=$3
     
     cat <<EOF
-        {
+{
             "ApiHost": "$url",
             "ApiKey": "$key",
             "NodeID": $id,
@@ -43,8 +43,8 @@ generate_node_json() {
                 "CertMode": "file",
                 "CertFile": "/etc/v2sp/fullchain.cer",
                 "KeyFile": "/etc/v2sp/cert.key"
+                }
             }
-        }
 EOF
 }
 
@@ -93,7 +93,7 @@ generate_config_file() {
             return 1
         fi
     done
-    
+
     if [[ ${#valid_ids[@]} -eq 0 ]]; then
         echo -e "${red}No valid node IDs${plain}"
         return 1
@@ -113,7 +113,7 @@ generate_config_file() {
         echo -e "${yellow}Cancelled${plain}"
         return 0
     fi
-    
+
     # Backup existing config
     if [[ -f /etc/v2sp/config.json ]]; then
         cp /etc/v2sp/config.json /etc/v2sp/config.json.bak
