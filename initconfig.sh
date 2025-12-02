@@ -90,9 +90,12 @@ generate_node_json() {
     local cert_config=""
     case "$cert_mode" in
         http)
+            # Auto-apply via HTTP, but still need to specify where to store certs
             cert_config='"CertConfig": {
                 "CertMode": "http",
-                "CertDomain": "'"$cert_domain"'"
+                "CertDomain": "'"$cert_domain"'",
+                "CertFile": "/etc/v2sp/cert/'"$cert_domain"'.crt",
+                "KeyFile": "/etc/v2sp/cert/'"$cert_domain"'.key"
             }'
             ;;
         none|reality)
@@ -104,8 +107,8 @@ generate_node_json() {
             cert_config='"CertConfig": {
                 "CertMode": "file",
                 "CertDomain": "'"${cert_domain:-your-domain.com}"'",
-                "CertFile": "/etc/v2sp/fullchain.cer",
-                "KeyFile": "/etc/v2sp/cert.key"
+                "CertFile": "/etc/v2sp/cert/fullchain.crt",
+                "KeyFile": "/etc/v2sp/cert/private.key"
             }'
             ;;
     esac
@@ -307,8 +310,10 @@ generate_config_file() {
         nodes_json+=$(generate_node_json "$url" "$key" "$id" "$cert_mode" "$cert_domain")
     done
     
-    # Create config directory
+    # Create config and cert directories
     mkdir -p /etc/v2sp
+    mkdir -p /etc/v2sp/cert
+    mkdir -p /etc/v2sp/hy2
     
     # Generate config.json
     cat > /etc/v2sp/config.json <<EOF
