@@ -10,7 +10,7 @@ bold='\033[1m'
 plain='\033[0m'
 
 # Progress bar with blocks
-TOTAL_STEPS=6
+TOTAL_STEPS=5
 CURRENT_STEP=0
 
 progress_bar() {
@@ -102,44 +102,6 @@ elif [[ x"${release}" == x"debian" && ${os_version} -lt 8 ]]; then
     echo -e "${red}Debian 8+ required${plain}" && exit 1
 fi
 
-install_hysteria2() {
-    # Check if already installed
-    if [[ -f /usr/local/bin/hysteria ]]; then
-        return 0
-    fi
-    
-    # Detect arch for Hysteria2
-    local hy2_arch=""
-    case "$(uname -m)" in
-        x86_64|amd64)
-            hy2_arch="amd64"
-            ;;
-        aarch64|arm64)
-            hy2_arch="arm64"
-            ;;
-        *)
-            # Unsupported arch, skip
-            return 0
-            ;;
-    esac
-    
-    # Get latest version
-    local hy2_version=""
-    hy2_version=$(curl -Ls "https://api.github.com/repos/apernet/hysteria/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-    if [[ -z "$hy2_version" ]]; then
-        # Silent fail, not critical
-        return 0
-    fi
-    
-    # Download Hysteria2
-    local hy2_url="https://github.com/apernet/hysteria/releases/download/${hy2_version}/hysteria-linux-${hy2_arch}"
-    wget --no-check-certificate -q -O /usr/local/bin/hysteria "$hy2_url" 2>/dev/null
-    if [[ $? -eq 0 ]]; then
-        chmod +x /usr/local/bin/hysteria
-        mkdir -p /etc/v2sp/hy2
-    fi
-}
-
 # Create default config.json
 create_default_config() {
     cat > /etc/v2sp/config.json <<'EOF'
@@ -158,15 +120,6 @@ create_default_config() {
             "AssetPath": "/etc/v2sp/",
             "OutboundConfigPath": "/etc/v2sp/custom_outbound.json",
             "RouteConfigPath": "/etc/v2sp/route.json"
-        },
-        {
-            "Type": "hysteria2",
-            "Log": {
-                "Level": "error",
-                "ErrorPath": "/etc/v2sp/hy2_error.log"
-            },
-            "BinaryPath": "/usr/local/bin/hysteria",
-            "ConfigDir": "/etc/v2sp/hy2"
         }
     ],
     "Nodes": [
@@ -194,16 +147,16 @@ install_base() {
     case "${release}" in
         centos)
             yum install -y -q epel-release wget curl unzip tar socat ca-certificates >/dev/null 2>&1
-        update-ca-trust force-enable >/dev/null 2>&1
+            update-ca-trust force-enable >/dev/null 2>&1
             ;;
         alpine)
             apk add --quiet wget curl unzip tar socat ca-certificates >/dev/null 2>&1
-        update-ca-certificates >/dev/null 2>&1
+            update-ca-certificates >/dev/null 2>&1
             ;;
         debian|ubuntu)
             apt-get update -qq >/dev/null 2>&1
             apt-get install -qq -y wget curl unzip tar cron socat ca-certificates >/dev/null 2>&1
-        update-ca-certificates >/dev/null 2>&1
+            update-ca-certificates >/dev/null 2>&1
             ;;
         arch)
             pacman -Sy --noconfirm --quiet >/dev/null 2>&1
@@ -251,10 +204,10 @@ install_v2sp() {
             progress_bar ${percent%\%} 100
         done
     
-        if [[ $? -ne 0 ]]; then
+    if [[ $? -ne 0 ]]; then
         step_fail "Download v2sp ${last_version}" "Network error or invalid version"
-            exit 1
-        fi
+        exit 1
+    fi
     step_ok "Downloaded v2sp ${last_version}"
     
     # Step 2: Extract and install
@@ -263,6 +216,7 @@ install_v2sp() {
     rm -f v2sp-linux.zip
     chmod +x v2sp
     mkdir -p /etc/v2sp/
+    mkdir -p /etc/v2sp/cert/
     cp geoip.dat /etc/v2sp/ 2>/dev/null
     cp geosite.dat /etc/v2sp/ 2>/dev/null
     
@@ -341,17 +295,12 @@ EOF
     if [[ $? -ne 0 ]]; then
         step_fail "Script download failed"
     else
-    chmod +x /usr/bin/v2sp
+        chmod +x /usr/bin/v2sp
         [[ ! -L /usr/bin/v2spctl ]] && ln -s /usr/bin/v2sp /usr/bin/v2spctl && chmod +x /usr/bin/v2spctl
         step_ok "Management script installed"
     fi
     
-    # Step 5: Install Hysteria2 (optional, for hysteria2 nodes)
-    step_start "Installing Hysteria2"
-    install_hysteria2
-    step_ok "Hysteria2 ready"
-    
-    # Step 6: Verify installation
+    # Step 5: Verify installation
     step_start "Verifying installation"
     local missing=0
     local files=(

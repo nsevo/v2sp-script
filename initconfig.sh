@@ -27,7 +27,7 @@ check_tls_requirement() {
     
     case "$node_type" in
         # These protocols ALWAYS require TLS
-        trojan|hysteria|hysteria2)
+        trojan|hysteria)
             echo "required"
             ;;
         # These protocols NEVER need TLS
@@ -234,7 +234,7 @@ generate_config_file() {
             node_cert_req_map[$id]="none"
         fi
     done
-    
+
     echo ""
     echo -e "${bold}Configuration:${plain}"
     echo -e "  URL: ${green}$url${plain}"
@@ -277,7 +277,7 @@ generate_config_file() {
         cp /etc/v2sp/config.json /etc/v2sp/config.json.bak
         echo -e "  ${green}[+]${plain} Backed up existing config"
     fi
-    
+
     # Generate nodes JSON
     local nodes_json=""
     local first=true
@@ -313,7 +313,6 @@ generate_config_file() {
     # Create config and cert directories
     mkdir -p /etc/v2sp
     mkdir -p /etc/v2sp/cert
-    mkdir -p /etc/v2sp/hy2
     
     # Generate config.json
     cat > /etc/v2sp/config.json <<EOF
@@ -331,15 +330,6 @@ generate_config_file() {
             },
             "OutboundConfigPath": "/etc/v2sp/custom_outbound.json",
             "RouteConfigPath": "/etc/v2sp/route.json"
-        },
-        {
-            "Type": "hysteria2",
-            "Log": {
-                "Level": "error",
-                "ErrorPath": "/etc/v2sp/hy2_error.log"
-            },
-            "BinaryPath": "/usr/local/bin/hysteria",
-            "ConfigDir": "/etc/v2sp/hy2"
         }
     ],
     "Nodes": [${nodes_json}
