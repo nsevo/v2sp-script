@@ -1,243 +1,131 @@
 #!/bin/bash
+#
+# v2sp installer - Simplified version
+# All logic moved to Go binary
+#
+
+set -e
 
 # Colors
-red='\033[0;31m'
-green='\033[0;32m'
-yellow='\033[0;33m'
-cyan='\033[0;36m'
-dim='\033[2m'
-bold='\033[1m'
-plain='\033[0m'
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+PLAIN='\033[0m'
 
-# Progress bar with blocks
-TOTAL_STEPS=5
-CURRENT_STEP=0
-
-progress_bar() {
-    local current=$1
-    local total=$2
-    local width=30
-    local percentage=$((current * 100 / total))
-    local filled=$((width * current / total))
-    local empty=$((width - filled))
-    
-    echo -ne "\r  ["
-    printf "%${filled}s" | tr ' ' '█'
-    printf "%${empty}s" | tr ' ' '░'
-    echo -ne "] ${percentage}% (${current}/${total})"
-}
-
-step_start() {
-    CURRENT_STEP=$((CURRENT_STEP + 1))
-    echo -ne "\r  [${cyan}${CURRENT_STEP}/${TOTAL_STEPS}${plain}] $1..."
-}
-
-step_ok() {
-    echo -e "\r  ${green}[+]${plain} $1                              "
-}
-
-step_fail() {
-    echo -e "\r  ${red}[-]${plain} $1"
-    [[ -n "$2" ]] && echo -e "      ${dim}$2${plain}"
-}
-
-step_warn() {
-    echo -e "  ${yellow}[!]${plain} $1"
-}
-
-cur_dir=$(pwd)
+# Helper functions
+error() { echo -e "${RED}✗${PLAIN} $1"; exit 1; }
+success() { echo -e "${GREEN}✓${PLAIN} $1"; }
+info() { echo -e "${CYAN}ℹ${PLAIN} $1"; }
+warn() { echo -e "${YELLOW}⚠${PLAIN} $1"; }
 
 # Check root
-[[ $EUID -ne 0 ]] && echo -e "${red}Error: Root required${plain}" && exit 1
+[[ $EUID -ne 0 ]] && error "Root privileges required"
 
-# Detect OS
-if [[ -f /etc/redhat-release ]]; then
-    release="centos"
-elif cat /etc/issue | grep -Eqi "alpine"; then
-    release="alpine"
-elif cat /etc/issue | grep -Eqi "debian"; then
-    release="debian"
-elif cat /etc/issue | grep -Eqi "ubuntu"; then
-    release="ubuntu"
-elif cat /proc/version | grep -Eqi "debian"; then
-    release="debian"
-elif cat /proc/version | grep -Eqi "ubuntu"; then
-    release="ubuntu"
-elif cat /proc/version | grep -Eqi "centos|red hat|redhat|rocky|alma|oracle linux"; then
-    release="centos"
-elif cat /proc/version | grep -Eqi "arch"; then
-    release="arch"
-else
-    echo -e "${red}Unsupported OS${plain}" && exit 1
-fi
+# Detect OS and architecture
+detect_system() {
+    # OS detection
+    if [[ -f /etc/os-release ]]; then
+        . /etc/os-release
+        OS=$ID
+    else
+        error "Unsupported operating system"
+    fi
 
-# Detect arch
-arch=$(uname -m)
-if [[ $arch == "x86_64" || $arch == "x64" || $arch == "amd64" ]]; then
-    arch="64"
-elif [[ $arch == "aarch64" || $arch == "arm64" ]]; then
-    arch="arm64-v8a"
-elif [[ $arch == "s390x" ]]; then
-    arch="s390x"
-else
-    arch="64"
-fi
+    # Architecture detection
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64|amd64) ARCH="64" ;;
+        aarch64|arm64) ARCH="arm64-v8a" ;;
+        *) error "Unsupported architecture: $ARCH" ;;
+    esac
 
-# Check 64bit
-[ "$(getconf WORD_BIT)" != '32' ] && [ "$(getconf LONG_BIT)" != '64' ] && \
-    echo -e "${red}32-bit not supported${plain}" && exit 2
-
-# OS version check
-if [[ -f /etc/os-release ]]; then
-    os_version=$(awk -F'[= ."]' '/VERSION_ID/{print $3}' /etc/os-release)
-fi
-[[ -z "$os_version" && -f /etc/lsb-release ]] && \
-    os_version=$(awk -F'[= ."]+' '/DISTRIB_RELEASE/{print $2}' /etc/lsb-release)
-
-if [[ x"${release}" == x"centos" && ${os_version} -le 6 ]]; then
-    echo -e "${red}CentOS 7+ required${plain}" && exit 1
-elif [[ x"${release}" == x"ubuntu" && ${os_version} -lt 16 ]]; then
-    echo -e "${red}Ubuntu 16+ required${plain}" && exit 1
-elif [[ x"${release}" == x"debian" && ${os_version} -lt 8 ]]; then
-    echo -e "${red}Debian 8+ required${plain}" && exit 1
-fi
-
-# Create default config.json
-create_default_config() {
-    cat > /etc/v2sp/config.json <<'EOF'
-{
-    "Log": {
-        "Level": "error",
-        "Output": ""
-    },
-    "Cores": [
-        {
-            "Type": "xray",
-            "Log": {
-                "Level": "error",
-                "ErrorPath": "/etc/v2sp/error.log"
-            },
-            "AssetPath": "/etc/v2sp/",
-            "OutboundConfigPath": "/etc/v2sp/custom_outbound.json",
-            "RouteConfigPath": "/etc/v2sp/route.json"
-        }
-    ],
-    "Nodes": [
-        {
-            "ApiHost": "https://your-panel.com/api",
-            "ApiKey": "your-api-key",
-            "NodeID": 1,
-            "Timeout": 30,
-            "ListenIP": "0.0.0.0",
-            "SendIP": "0.0.0.0",
-            "DeviceOnlineMinTraffic": 200,
-            "CertConfig": {
-                "CertMode": "file",
-                "CertDomain": "your-domain.com",
-                "CertFile": "/etc/v2sp/fullchain.cer",
-                "KeyFile": "/etc/v2sp/cert.key"
-            }
-        }
-    ]
-}
-EOF
+    info "Detected: $OS ($ARCH)"
 }
 
-install_base() {
-    case "${release}" in
-        centos)
-            yum install -y -q epel-release wget curl unzip tar socat ca-certificates >/dev/null 2>&1
-            update-ca-trust force-enable >/dev/null 2>&1
-            ;;
-        alpine)
-            apk add --quiet wget curl unzip tar socat ca-certificates >/dev/null 2>&1
-            update-ca-certificates >/dev/null 2>&1
-            ;;
-        debian|ubuntu)
+# Install dependencies
+install_deps() {
+    info "Installing dependencies..."
+    
+    case "$OS" in
+        ubuntu|debian)
             apt-get update -qq >/dev/null 2>&1
-            apt-get install -qq -y wget curl unzip tar cron socat ca-certificates >/dev/null 2>&1
-            update-ca-certificates >/dev/null 2>&1
+            apt-get install -qq -y wget curl unzip >/dev/null 2>&1
+            ;;
+        centos|rhel|fedora|rocky|alma)
+            yum install -y -q wget curl unzip >/dev/null 2>&1
             ;;
         arch)
-            pacman -Sy --noconfirm --quiet >/dev/null 2>&1
-            pacman -S --noconfirm --needed --quiet wget curl unzip tar cron socat ca-certificates >/dev/null 2>&1
+            pacman -Sy --noconfirm --quiet wget curl unzip >/dev/null 2>&1
+            ;;
+        alpine)
+            apk add --quiet wget curl unzip >/dev/null 2>&1
             ;;
     esac
+    
+    success "Dependencies installed"
 }
 
-check_status() {
-    [[ ! -f /usr/local/v2sp/v2sp ]] && return 2
+# Download v2sp
+download_v2sp() {
+    VERSION=${1:-latest}
     
-    if [[ x"${release}" == x"alpine" ]]; then
-        temp=$(service v2sp status 2>/dev/null | awk '{print $3}')
-        [[ x"${temp}" == x"started" ]] && return 0 || return 1
-    else
-        temp=$(systemctl status v2sp 2>/dev/null | grep Active | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1)
-        [[ x"${temp}" == x"running" ]] && return 0 || return 1
+    info "Fetching v2sp ${VERSION}..."
+    
+    # Get latest version if not specified
+    if [[ "$VERSION" == "latest" ]]; then
+        VERSION=$(curl -fsSL https://api.github.com/repos/nsevo/v2sp/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        [[ -z "$VERSION" ]] && error "Failed to get latest version"
     fi
+    
+    # Download URL
+    URL="https://github.com/nsevo/v2sp/releases/download/${VERSION}/v2sp-linux-${ARCH}.zip"
+    
+    # Download
+    TMP_DIR=$(mktemp -d)
+    cd "$TMP_DIR"
+    
+    if ! wget -q --show-progress "$URL" -O v2sp.zip; then
+        error "Download failed"
+    fi
+    
+    success "Downloaded v2sp ${VERSION}"
+    
+    # Extract
+    info "Installing..."
+    unzip -q v2sp.zip
+    
+    # Install binary
+    mkdir -p /usr/local/v2sp
+    mv v2sp /usr/local/v2sp/
+    chmod +x /usr/local/v2sp/v2sp
+    
+    # Install management script (symlink)
+    ln -sf /usr/local/v2sp/v2sp /usr/bin/v2sp
+    
+    # Copy geo files
+    [[ -f geoip.dat ]] && cp geoip.dat /etc/v2sp/ 2>/dev/null || true
+    [[ -f geosite.dat ]] && cp geosite.dat /etc/v2sp/ 2>/dev/null || true
+    
+    # Cleanup
+    cd - >/dev/null
+    rm -rf "$TMP_DIR"
+    
+    success "v2sp installed"
 }
 
-install_v2sp() {
-    local last_version=""
-    local archive="/usr/local/v2sp/v2sp-linux.zip"
-
-    # Clean old installation
-    [[ -e /usr/local/v2sp/ ]] && rm -rf /usr/local/v2sp/
-    mkdir -p /usr/local/v2sp/
-    cd /usr/local/v2sp/
-
-    # Step 1: Download
-    step_start "Fetching v2sp"
-    if [ $# == 0 ]; then
-        last_version=$(curl -Ls "https://api.github.com/repos/nsevo/v2sp/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-        if [[ ! -n "$last_version" ]]; then
-            step_fail "Fetching v2sp" "GitHub API limit or network issue"
-            exit 1
-        fi
-    else
-        last_version=$1
-    fi
+# Setup system (using v2sp binary)
+setup_system() {
+    info "Setting up system configuration..."
     
-    wget --no-check-certificate -q -O "${archive}" \
-        "https://github.com/nsevo/v2sp/releases/download/${last_version}/v2sp-linux-${arch}.zip" 2>&1 | \
-        grep -o "[0-9]\+%" | while read percent; do
-            progress_bar ${percent%\%} 100
-        done
-    
-    if [[ $? -ne 0 ]]; then
-        step_fail "Download v2sp ${last_version}" "Network error or invalid version"
-        exit 1
-    fi
-    step_ok "Downloaded v2sp ${last_version}"
-    
-    # Step 2: Extract and install
-    step_start "Installing core"
-    unzip -qq v2sp-linux.zip 2>/dev/null
-    rm -f v2sp-linux.zip
-    chmod +x v2sp
-    mkdir -p /etc/v2sp/
-    mkdir -p /etc/v2sp/cert/
-    cp geoip.dat /etc/v2sp/ 2>/dev/null
-    cp geosite.dat /etc/v2sp/ 2>/dev/null
-    
-    # Setup service
-    if [[ x"${release}" == x"alpine" ]]; then
-        cat > /etc/init.d/v2sp <<'EOF'
-#!/sbin/openrc-run
-name="v2sp"
-description="v2sp"
-command="/usr/local/v2sp/v2sp"
-command_args="server"
-command_user="root"
-pidfile="/run/v2sp.pid"
-command_background="yes"
-depend() {
-        need net
-}
-EOF
-        chmod +x /etc/init.d/v2sp
-        rc-update add v2sp default >/dev/null 2>&1
-    else
+    # Use v2sp's built-in system setup
+    if ! /usr/local/v2sp/v2sp system setup 2>/dev/null; then
+        warn "System setup failed, trying manual setup..."
+        
+        # Fallback: manual setup
+        mkdir -p /etc/v2sp /etc/v2sp/cert
+        
+        # Create systemd service
         cat > /etc/systemd/system/v2sp.service <<'EOF'
 [Unit]
 Description=v2sp Service
@@ -246,11 +134,7 @@ Wants=network.target
 
 [Service]
 User=root
-Group=root
 Type=simple
-LimitAS=infinity
-LimitRSS=infinity
-LimitCORE=infinity
 LimitNOFILE=999999
 WorkingDirectory=/usr/local/v2sp/
 ExecStart=/usr/local/v2sp/v2sp server
@@ -260,111 +144,68 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 EOF
-        systemctl daemon-reload >/dev/null 2>&1
-        systemctl stop v2sp >/dev/null 2>&1
+        
+        systemctl daemon-reload
         systemctl enable v2sp >/dev/null 2>&1
     fi
-    step_ok "Core installed ${last_version}"
     
-    # Step 3: Configuration
-    step_start "Configuring files"
-    local first_install=false
-    if [[ ! -f /etc/v2sp/config.json ]]; then
-        create_default_config
-        first_install=true
-        step_ok "Created default config.json (edit before starting)"
-    else
-        # Restart existing installation
-        if [[ x"${release}" == x"alpine" ]]; then
-            service v2sp start >/dev/null 2>&1
-        else
-            systemctl start v2sp >/dev/null 2>&1
-        fi
-        sleep 1
-        check_status
-        if [[ $? != 0 ]]; then
-            step_warn "Service may have failed, check: v2sp log"
-        else
-            step_ok "Config exists, service restarted"
-        fi
+    success "System configured"
+}
+
+# Configure v2sp
+configure_v2sp() {
+    # Check if config exists
+    if [[ -f /etc/v2sp/config.json ]]; then
+        warn "Config exists, skipping configuration"
+        info "Restarting service..."
+        systemctl restart v2sp
+        return
     fi
     
-    # Step 4: Management script
-    step_start "Installing management script"
-    curl -sLo /usr/bin/v2sp https://raw.githubusercontent.com/nsevo/v2sp-script/master/v2sp.sh 2>/dev/null
-    if [[ $? -ne 0 ]]; then
-        step_fail "Script download failed"
+    # Ask user
+    echo ""
+    read -p "$(echo -e ${CYAN}Generate configuration now? [Y/n]:${PLAIN} )" answer
+    answer=${answer:-y}
+    
+    if [[ "${answer,,}" == "y" ]]; then
+        # Use v2sp's built-in config wizard
+        /usr/local/v2sp/v2sp config init
     else
-        chmod +x /usr/bin/v2sp
-        [[ ! -L /usr/bin/v2spctl ]] && ln -s /usr/bin/v2sp /usr/bin/v2spctl && chmod +x /usr/bin/v2spctl
-        step_ok "Management script installed"
-    fi
-    
-    # Step 5: Verify installation
-    step_start "Verifying installation"
-    local missing=0
-    local files=(
-        "/etc/v2sp/config.json"
-        "/etc/v2sp/geoip.dat"
-        "/etc/v2sp/geosite.dat"
-    )
-    for f in "${files[@]}"; do
-        if [[ ! -f "$f" ]]; then
-            missing=$((missing + 1))
-            # Auto-fix if possible
-            case "$f" in
-                */geoip.dat) cp /usr/local/v2sp/geoip.dat "$f" 2>/dev/null ;;
-                */geosite.dat) cp /usr/local/v2sp/geosite.dat "$f" 2>/dev/null ;;
-            esac
-        fi
-    done
-    [[ $missing -gt 0 ]] && step_warn "${missing} file(s) missing, may need manual setup"
-    step_ok "Installation verified"
-    
-    # Cleanup
-    cd $cur_dir
-    rm -f install.sh
-    
-    # Summary
-    echo ""
-    echo -e "${green}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${plain}"
-    echo -e "  ${bold}v2sp ${last_version} installed${plain}"
-    echo -e "${green}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${plain}"
-    echo ""
-    echo -e "  ${cyan}Usage:${plain}"
-    echo -e "    v2sp              ${dim}Interactive menu${plain}"
-    echo -e "    v2sp start        ${dim}Start service${plain}"
-    echo -e "    v2sp stop         ${dim}Stop service${plain}"
-    echo -e "    v2sp restart      ${dim}Restart service${plain}"
-    echo -e "    v2sp status       ${dim}Check status${plain}"
-    echo -e "    v2sp log          ${dim}View logs${plain}"
-    echo -e "    v2sp generate     ${dim}Generate config${plain}"
-    echo ""
-    
-    # First install prompt
-    if [[ $first_install == true ]]; then
-        echo -e "  ${yellow}[!]${plain} First install detected"
-        read -rp "  Generate config now? (y/n): " if_generate
-        if [[ $if_generate == [Yy] ]]; then
-            curl -sLo ./initconfig.sh https://raw.githubusercontent.com/nsevo/v2sp-script/master/initconfig.sh 2>/dev/null
-            source initconfig.sh
-            rm -f initconfig.sh
-            generate_config_file
-        fi
+        info "Skipped configuration"
+        info "Generate later with: v2sp config init"
     fi
 }
 
-# Main
-clear
-echo ""
-echo -e "${bold}${cyan}v2sp Installer${plain}"
-echo -e "${dim}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${plain}"
-echo -e "  OS: ${release} | Arch: ${arch}"
-echo -e "${dim}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${plain}"
-echo ""
+# Main installation flow
+main() {
+    clear
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${PLAIN}"
+    echo -e "  ${CYAN}v2sp Installer${PLAIN}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${PLAIN}"
+    echo ""
+    
+    detect_system
+    install_deps
+    download_v2sp "$1"
+    setup_system
+    
+    echo ""
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${PLAIN}"
+    echo -e "  ${GREEN}✓ Installation Complete${PLAIN}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${PLAIN}"
+    echo ""
+    echo -e "  Quick start:"
+    echo -e "    ${CYAN}v2sp${PLAIN}              Interactive menu"
+    echo -e "    ${CYAN}v2sp status${PLAIN}       Check status"
+    echo -e "    ${CYAN}v2sp config init${PLAIN}  Setup configuration"
+    echo ""
+    
+    configure_v2sp
+    
+    echo ""
+    echo -e "  ${GREEN}All done!${PLAIN} Run ${CYAN}v2sp${PLAIN} to get started."
+    echo ""
+}
 
-step_start "Preparing environment"
-install_base
-step_ok "Environment ready"
-
-install_v2sp $1
+main "$@"
