@@ -102,44 +102,6 @@ elif [[ x"${release}" == x"debian" && ${os_version} -lt 8 ]]; then
     echo -e "${red}Debian 8+ required${plain}" && exit 1
     fi
 
-install_hysteria2() {
-    # Check if already installed
-    if [[ -f /usr/local/bin/hysteria ]]; then
-        return 0
-    fi
-    
-    # Detect arch for Hysteria2
-    local hy2_arch=""
-    case "$(uname -m)" in
-        x86_64|amd64)
-            hy2_arch="amd64"
-            ;;
-        aarch64|arm64)
-            hy2_arch="arm64"
-            ;;
-        *)
-            # Unsupported arch, skip
-            return 0
-            ;;
-    esac
-    
-    # Get latest version
-    local hy2_version=""
-    hy2_version=$(curl -Ls "https://api.github.com/repos/apernet/hysteria/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-    if [[ -z "$hy2_version" ]]; then
-        # Silent fail, not critical
-        return 0
-    fi
-    
-    # Download Hysteria2
-    local hy2_url="https://github.com/apernet/hysteria/releases/download/${hy2_version}/hysteria-linux-${hy2_arch}"
-    wget --no-check-certificate -q -O /usr/local/bin/hysteria "$hy2_url" 2>/dev/null
-    if [[ $? -eq 0 ]]; then
-        chmod +x /usr/local/bin/hysteria
-        mkdir -p /etc/v2sp/hy2
-    fi
-}
-
 install_base() {
     case "${release}" in
         centos)
@@ -300,12 +262,7 @@ EOF
         step_ok "Management script installed"
     fi
     
-    # Step 5: Install Hysteria2 (optional, for hysteria2 nodes)
-    step_start "Installing Hysteria2"
-    install_hysteria2
-    step_ok "Hysteria2 ready"
-    
-    # Step 6: Verify installation
+    # Step 5: Verify installation
     step_start "Verifying installation"
     local missing=0
     local files=(

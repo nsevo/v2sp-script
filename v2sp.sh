@@ -492,6 +492,7 @@ show_usage() {
     echo "v2sp x25519       - Generate key"
     echo "v2sp generate     - Generate config"
     echo "v2sp log clean    - Clear logs"
+    echo "v2sp ramdebug     - Sample memory/FD to /etc/v2sp/ramdebug.log"
     echo "-----------------------------------"
 }
 
@@ -596,6 +597,7 @@ if [[ $# > 0 ]]; then
         "x25519") check_install 0 && generate_x25519_key 0 ;;
         "version") check_install 0 && show_v2sp_version 0 ;;
         "update_shell") update_shell ;;
+        "ramdebug") check_install 0 && /usr/local/v2sp/v2sp ramdebug "${@:2}" ;;
         *) show_usage ;;
     esac
 else
